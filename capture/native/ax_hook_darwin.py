@@ -12,6 +12,7 @@ import os
 import time
 import threading
 import subprocess
+from collections.abc import Iterable
 
 try:
     from pynput import mouse, keyboard
@@ -153,6 +154,9 @@ def _perform_action(element, action_name):
 def _to_number(value, field, default=0):
     if value is None:
         return default
+    decoded = _decode_ax_value(value, field)
+    if decoded is not None:
+        return decoded
     if hasattr(value, field):
         return getattr(value, field)
     if isinstance(value, dict):
@@ -162,6 +166,30 @@ def _to_number(value, field, default=0):
         if len(value) > index:
             return value[index]
     return default
+
+
+def _decode_ax_value(value, field):
+    AX = _get_ax_module()
+    if AX is None or not hasattr(AX, "AXValueGetValue"):
+        return None
+
+    value_type = None
+    if field in ("x", "y") and hasattr(AX, "kAXValueCGPointType"):
+        value_type = AX.kAXValueCGPointType
+    elif field in ("width", "height") and hasattr(AX, "kAXValueCGSizeType"):
+        value_type = AX.kAXValueCGSizeType
+    if value_type is None:
+        return None
+
+    try:
+        ok, decoded = AX.AXValueGetValue(value, value_type, None)
+    except Exception:
+        return None
+    if not ok or decoded is None:
+        return None
+    if hasattr(decoded, field):
+        return getattr(decoded, field)
+    return None
 
 
 def _coerce_text(value):
@@ -220,7 +248,7 @@ def _ax_element_to_info(element, fallback_x, fallback_y):
         "width": int(_to_number(size, "width", 120)),
         "height": int(_to_number(size, "height", 30)),
         "label": label,
-        "type": _role_to_ax_type(role),
+        "type": _role_to_ax_type(role, default="AXUnknown"),
     }
 
 
@@ -294,7 +322,7 @@ def _find_element_at_point(x, y):
     return {"x": x, "y": y, "width": 120, "height": 30, "label": "", "type": "AXButton"}
 
 
-def _role_to_ax_type(role):
+def _role_to_ax_type(role, default="AXButton"):
     role = role or ""
     mapping = {
         "AXButton": "AXButton",
@@ -310,9 +338,8 @@ def _role_to_ax_type(role):
         "AXStaticText": "AXStaticText",
         "AXLink": "AXLink",
         "AXImage": "AXButton",
-        "AXWindow": "AXButton",
     }
-    return mapping.get(role, "AXButton")
+    return mapping.get(role, default)
 
 
 def _ax_attr(name, fallback):
@@ -326,6 +353,11 @@ def _copy_children(element):
         return []
     if isinstance(children, (list, tuple)):
         return list(children)
+    if isinstance(children, Iterable) and not isinstance(children, (str, bytes)):
+        try:
+            return list(children)
+        except Exception:
+            pass
     return [children]
 
 

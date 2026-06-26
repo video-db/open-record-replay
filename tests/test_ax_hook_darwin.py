@@ -15,6 +15,12 @@ class FakeAX:
     kAXValueAttribute = "AXValue"
     kAXPositionAttribute = "AXPosition"
     kAXSizeAttribute = "AXSize"
+    kAXValueCGPointType = 1
+    kAXValueCGSizeType = 2
+
+    @staticmethod
+    def AXValueGetValue(value, _value_type, _value_ptr):
+        return True, value
 
 
 def test_normalize_ax_result_accepts_error_value_tuple():
@@ -48,6 +54,27 @@ def test_ax_element_to_info_maps_role_label_and_frame(monkeypatch):
         "label": "Search",
         "type": "AXTextField",
     }
+
+
+def test_to_number_decodes_ax_value(monkeypatch):
+    monkeypatch.setattr(darwin, "_get_ax_module", lambda: FakeAX)
+
+    assert darwin._to_number(SimpleNamespace(x=42, y=84), "x") == 42
+    assert darwin._to_number(SimpleNamespace(width=320, height=200), "height") == 200
+
+
+def test_role_to_ax_type_uses_configurable_default():
+    assert darwin._role_to_ax_type("AXDefinitelyMissing", default="AXUnknown") == "AXUnknown"
+
+
+def test_copy_children_accepts_iterable_objective_c_arrays(monkeypatch):
+    class ChildArray:
+        def __iter__(self):
+            return iter(["a", "b"])
+
+    monkeypatch.setattr(darwin, "_copy_attribute", lambda _element, _attr: ChildArray())
+
+    assert darwin._copy_children(object()) == ["a", "b"]
 
 
 def test_find_elements_filters_by_type_and_prefers_label(monkeypatch):
