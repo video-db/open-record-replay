@@ -58,3 +58,41 @@ record_skill_tool("my-workflow")
 ```
 
 Compiled skills land in `~/.mcp-videodb/skills/<name>/SKILL.json` and `SKILL.md`.
+
+## macOS validation flow
+
+macOS requires separate privacy permissions for full record/replay:
+
+- Screen Recording and Microphone for VideoDB Capture.
+- Accessibility and Input Monitoring for the native AX event/replay hook.
+
+Run the hook smoke test first:
+
+```bash
+uv run python scripts/smoke_macos_hook.py --prompt-permissions
+```
+
+If `ready_for_event_recording` is false, enable the terminal/Codex host process in
+System Settings > Privacy & Security > Accessibility and Input Monitoring, then rerun
+the command.
+
+To inspect visible controls:
+
+```bash
+uv run python scripts/smoke_macos_hook.py --list-type AXButton
+uv run python scripts/smoke_macos_hook.py --find "Submit" --find-type AXButton
+```
+
+To smoke-test replay:
+
+```bash
+uv run python scripts/smoke_macos_hook.py --click-at 100 100
+```
+
+Use the MCP flow after these checks pass:
+
+1. `request_capture_permissions_tool()`
+2. `record_skill_tool("my-workflow")`
+3. Perform the workflow on screen.
+4. `stop_recording_tool()`
+5. `compile_skill_tool(video_id, "my-workflow")`
