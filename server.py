@@ -92,16 +92,16 @@ async def request_capture_permissions_tool() -> dict:
     }
 
 @mcp.tool()
-async def record_skill_tool(name: str) -> dict:
+async def record_skill_tool(name: str, lead_in_seconds: float = 0.0) -> dict:
     """Start recording a workflow that will later be compiled into a skill."""
     await _ensure_connected()
-    return await record_skill(name)
+    return await record_skill(name, lead_in_seconds=lead_in_seconds)
 
 
 @mcp.tool()
-async def stop_recording_tool() -> dict:
+async def stop_recording_tool(trim_end_seconds: float = 0.0) -> dict:
     """Stop the active recording and return its event log and VideoDB video id."""
-    return await stop_recording()
+    return await stop_recording(trim_end_seconds=trim_end_seconds)
 
 
 @mcp.tool()

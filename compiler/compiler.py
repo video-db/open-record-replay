@@ -82,11 +82,13 @@ async def compile_skill(video_id: str, name: str) -> dict:
     if not metadata:
         raise RuntimeError(f"No session metadata found for video_id {video_id}")
 
+    start_ms = _effective_start_ms(metadata)
+    end_ms = _effective_end_ms(metadata)
+    events = _trim_events_to_effective_window(events, start_ms, end_ms)
     events = _prefilter_events(events)
     if not events:
         raise RuntimeError("No events remain after noise filtering")
 
-    start_ms = metadata["recording_start_epoch_ms"]
     event_scene_offset = _estimate_event_scene_offset(events, scenes, start_ms)
     matched = _match_events_to_scenes(events, scenes, start_ms, event_scene_offset)
     prompt = build_prompt(name, events, matched, transcript)
@@ -210,6 +212,10 @@ async def compile_skill_events_only(name: str) -> dict:
     if not metadata:
         raise RuntimeError(f"No session metadata found for skill '{name}'")
 
+    start_ms = _effective_start_ms(metadata)
+    end_ms = _effective_end_ms(metadata)
+    events = _trim_events_to_effective_window(events, start_ms, end_ms)
+    events = _prefilter_events(events)
     if not events:
         raise RuntimeError("No events recorded")
 
@@ -549,7 +555,7 @@ def _to_relative_seconds(end_time: float, metadata: dict) -> float:
 
     Detect and convert to relative seconds.
     """
-    start_ms = metadata.get("recording_start_epoch_ms", 0)
+    start_ms = _effective_start_ms(metadata)
     if end_time > 1000000000000:
         return (end_time - start_ms) / 1000.0
     if start_ms > 0 and end_time > 1000000000:
@@ -623,6 +629,37 @@ def _prefilter_events(events: list[dict], screen_h: int = 1080, screen_w: int = 
     return filtered
 
 
+def _effective_start_ms(metadata: dict) -> int:
+    return int(
+        metadata.get("effective_recording_start_epoch_ms")
+        or metadata.get("recording_start_epoch_ms")
+        or 0
+    )
+
+
+def _effective_end_ms(metadata: dict) -> int:
+    return int(
+        metadata.get("effective_recording_end_epoch_ms")
+        or metadata.get("recording_end_epoch_ms")
+        or 0
+    )
+
+
+def _trim_events_to_effective_start(events: list[dict], effective_start_ms: int) -> list[dict]:
+    return _trim_events_to_effective_window(events, effective_start_ms, 0)
+
+
+def _trim_events_to_effective_window(events: list[dict], effective_start_ms: int, effective_end_ms: int = 0) -> list[dict]:
+    if not effective_start_ms:
+        effective_start_ms = 0
+    return [
+        event
+        for event in events
+        if event.get("ts", 0) >= effective_start_ms
+        and (not effective_end_ms or event.get("ts", 0) <= effective_end_ms)
+    ]
+
+
 def _parse_position_from_label(label: str) -> dict | None:
     m = re.match(r"element_at_(\d+)_(\d+)", str(label))
     if m:
@@ -632,7 +669,7 @@ def _parse_position_from_label(label: str) -> dict | None:
 
 def _build_events_only_prompt(name: str, events: list[dict], metadata: dict) -> str:
     import compiler.prompts as p
-    start_ms = metadata["recording_start_epoch_ms"]
+    start_ms = _effective_start_ms(metadata)
     events_text = "\n".join(
         json.dumps({"ts": round((e["ts"] - start_ms) / 1000.0, 3),
                      "action": e["action"], "target": e.get("target"),

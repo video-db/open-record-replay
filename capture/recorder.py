@@ -71,15 +71,18 @@ def enable_capture():
     _capture_available = True
 
 
-async def record_skill(name: str) -> dict:
+async def record_skill(name: str, lead_in_seconds: float = 0.0) -> dict:
     if state.is_recording:
         raise RuntimeError("Already recording. Call stop_recording() first.")
 
+    lead_in_seconds = max(0.0, float(lead_in_seconds or 0.0))
     state.session_dir = str(SESSIONS_ROOT / f"{int(time.time())}_{name}")
     Path(state.session_dir).mkdir(parents=True, exist_ok=True)
     state.recording_skill_name = name
     state.events_path = str(Path(state.session_dir) / "events.jsonl")
     state.recording_start_epoch_ms = int(time.time() * 1000)
+    state.effective_recording_start_epoch_ms = state.recording_start_epoch_ms
+    state.effective_recording_end_epoch_ms = 0
 
     binary = _get_ax_binary_path()
     use_tcp = sys.platform == "win32"
@@ -108,6 +111,16 @@ async def record_skill(name: str) -> dict:
         state.ax_client = AxClient(state.ax_proc)
         await state.ax_client.start(event_handler=_handle_ax_event)
 
+    ax_permission_warning = None
+    if sys.platform == "darwin":
+        permission_response = await state.ax_client.send("check_permissions", {"prompt": True})
+        permission_result = permission_response.get("result", {})
+        if permission_response.get("status") == "ok" and not permission_result.get("ready_for_event_recording", False):
+            ax_permission_warning = permission_result.get(
+                "note",
+                "macOS Accessibility/Input Monitoring permissions are not ready.",
+            )
+
     response = await state.ax_client.send("start_recording", {
         "output_path": state.events_path,
     })
@@ -118,12 +131,16 @@ async def record_skill(name: str) -> dict:
     if not capture_ok:
         logger.warning("Capture SDK unavailable — recording events only (no video)")
         state.is_recording = True
+        state.effective_recording_start_epoch_ms = int((time.time() + lead_in_seconds) * 1000)
         state.capture_client = None
         return {
             "status": "recording",
             "mode": "events_only",
             "session_dir": state.session_dir,
-            "warning": "VideoDB capture unavailable. Events being recorded, but no video will be saved."
+            "warning": "VideoDB capture unavailable. Events being recorded, but no video will be saved.",
+            "ax_permission_warning": ax_permission_warning,
+            "lead_in_seconds": lead_in_seconds,
+            "workflow_starts_at_epoch_ms": state.effective_recording_start_epoch_ms,
         }
 
     try:
@@ -179,7 +196,17 @@ async def record_skill(name: str) -> dict:
             async for event in state.capture_client.events():
                 if event.get("event") == "recording-started":
                     state.is_recording = True
-                    return {"status": "recording", "mode": "full", "session_dir": state.session_dir}
+                    state.effective_recording_start_epoch_ms = int(
+                        (time.time() + lead_in_seconds) * 1000
+                    )
+                    return {
+                        "status": "recording",
+                        "mode": "full",
+                        "session_dir": state.session_dir,
+                        "ax_permission_warning": ax_permission_warning,
+                        "lead_in_seconds": lead_in_seconds,
+                        "workflow_starts_at_epoch_ms": state.effective_recording_start_epoch_ms,
+                    }
                 if event.get("event") == "recording-complete":
                     await _abort_capture()
                     raise RuntimeError("Recording ended unexpectedly")
@@ -195,20 +222,25 @@ async def record_skill(name: str) -> dict:
         logger.warning(f"Capture failed ({e}), falling back to events-only recording")
         await _abort_capture()
         state.is_recording = True
+        state.effective_recording_start_epoch_ms = int((time.time() + lead_in_seconds) * 1000)
         return {
             "status": "recording",
             "mode": "events_only",
             "session_dir": state.session_dir,
-            "warning": f"Capture failed: {e}. Events being recorded, but no video."
+            "warning": f"Capture failed: {e}. Events being recorded, but no video.",
+            "ax_permission_warning": ax_permission_warning,
+            "lead_in_seconds": lead_in_seconds,
+            "workflow_starts_at_epoch_ms": state.effective_recording_start_epoch_ms,
         }
     except Exception as e:
         await _abort_capture()
         raise RuntimeError(f"Recording failed: {e}")
 
 
-async def stop_recording() -> dict:
+async def stop_recording(trim_end_seconds: float = 0.0) -> dict:
     if not state.is_recording:
         raise RuntimeError("Not recording. Call record_skill() first.")
+    trim_end_seconds = max(0.0, float(trim_end_seconds or 0.0))
 
     await state.ax_client.send("stop_recording", {})
     video_id = None
@@ -236,6 +268,11 @@ async def stop_recording() -> dict:
     await state.ax_client.shutdown()
 
     recording_end_ms = int(time.time() * 1000)
+    effective_end_ms = max(
+        state.effective_recording_start_epoch_ms or state.recording_start_epoch_ms,
+        recording_end_ms - int(trim_end_seconds * 1000),
+    )
+    state.effective_recording_end_epoch_ms = effective_end_ms
     duration = (recording_end_ms - state.recording_start_epoch_ms) / 1000.0
 
     event_count = 0
@@ -257,6 +294,13 @@ async def stop_recording() -> dict:
         "skill_name": state.recording_skill_name,
         "video_id": video_id,
         "recording_start_epoch_ms": state.recording_start_epoch_ms,
+        "effective_recording_start_epoch_ms": state.effective_recording_start_epoch_ms or state.recording_start_epoch_ms,
+        "effective_recording_end_epoch_ms": state.effective_recording_end_epoch_ms or recording_end_ms,
+        "lead_in_seconds": max(
+            0.0,
+            ((state.effective_recording_start_epoch_ms or state.recording_start_epoch_ms) - state.recording_start_epoch_ms) / 1000.0,
+        ),
+        "trim_end_seconds": trim_end_seconds,
         "recording_end_epoch_ms": recording_end_ms,
         "duration_seconds": duration,
         "platform": platform.system().lower(),
