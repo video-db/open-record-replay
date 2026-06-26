@@ -108,6 +108,16 @@ async def record_skill(name: str) -> dict:
         state.ax_client = AxClient(state.ax_proc)
         await state.ax_client.start(event_handler=_handle_ax_event)
 
+    ax_permission_warning = None
+    if sys.platform == "darwin":
+        permission_response = await state.ax_client.send("check_permissions", {"prompt": True})
+        permission_result = permission_response.get("result", {})
+        if permission_response.get("status") == "ok" and not permission_result.get("ready_for_event_recording", False):
+            ax_permission_warning = permission_result.get(
+                "note",
+                "macOS Accessibility/Input Monitoring permissions are not ready.",
+            )
+
     response = await state.ax_client.send("start_recording", {
         "output_path": state.events_path,
     })
@@ -123,7 +133,8 @@ async def record_skill(name: str) -> dict:
             "status": "recording",
             "mode": "events_only",
             "session_dir": state.session_dir,
-            "warning": "VideoDB capture unavailable. Events being recorded, but no video will be saved."
+            "warning": "VideoDB capture unavailable. Events being recorded, but no video will be saved.",
+            "ax_permission_warning": ax_permission_warning,
         }
 
     try:
@@ -179,7 +190,12 @@ async def record_skill(name: str) -> dict:
             async for event in state.capture_client.events():
                 if event.get("event") == "recording-started":
                     state.is_recording = True
-                    return {"status": "recording", "mode": "full", "session_dir": state.session_dir}
+                    return {
+                        "status": "recording",
+                        "mode": "full",
+                        "session_dir": state.session_dir,
+                        "ax_permission_warning": ax_permission_warning,
+                    }
                 if event.get("event") == "recording-complete":
                     await _abort_capture()
                     raise RuntimeError("Recording ended unexpectedly")
@@ -199,7 +215,8 @@ async def record_skill(name: str) -> dict:
             "status": "recording",
             "mode": "events_only",
             "session_dir": state.session_dir,
-            "warning": f"Capture failed: {e}. Events being recorded, but no video."
+            "warning": f"Capture failed: {e}. Events being recorded, but no video.",
+            "ax_permission_warning": ax_permission_warning,
         }
     except Exception as e:
         await _abort_capture()
