@@ -151,6 +151,47 @@ def test_handle_message_execute_type_uses_last_element(monkeypatch):
     assert responses[0]["result"] == {"typed": "hello", "performed": True}
 
 
+def test_on_click_emits_click_event(monkeypatch):
+    events = []
+
+    monkeypatch.setattr(darwin, "is_recording", True)
+    monkeypatch.setattr(darwin, "_pending_type_target", None)
+    monkeypatch.setattr(darwin, "_pending_value", "")
+    monkeypatch.setattr(darwin, "_pending_action_type", "")
+    monkeypatch.setattr(darwin, "_find_element_at_point", lambda x, y: {
+        "type": "AXButton",
+        "label": "Save",
+    })
+    monkeypatch.setattr(darwin, "write_event", events.append)
+
+    darwin._on_click(10, 20, darwin.mouse.Button.left, True)
+
+    assert events[0]["action"] == "click"
+    assert events[0]["target"] == {"type": "AXButton", "label": "Save", "role": "AXButton"}
+    assert events[0]["position"] == {"x": 10, "y": 20}
+
+
+def test_on_press_accumulates_pending_text(monkeypatch):
+    events = []
+
+    monkeypatch.setattr(darwin, "is_recording", True)
+    monkeypatch.setattr(darwin, "_pending_type_target", {
+        "type": "AXTextField",
+        "label": "Search",
+    })
+    monkeypatch.setattr(darwin, "_pending_value", "")
+    monkeypatch.setattr(darwin, "_pending_action_type", "type")
+    monkeypatch.setattr(darwin, "write_event", events.append)
+
+    darwin._on_press(SimpleNamespace(char="h"))
+    darwin._on_press(SimpleNamespace(char="i"))
+    darwin._on_press(darwin.keyboard.Key.enter)
+
+    assert events[0]["action"] == "type"
+    assert events[0]["target"] == {"type": "AXTextField", "label": "Search", "role": "AXTextField"}
+    assert events[0]["value"] == "hi"
+
+
 def test_handle_message_check_permissions(monkeypatch):
     responses = []
 

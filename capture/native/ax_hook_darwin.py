@@ -567,6 +567,7 @@ def _finalize_pending(ts=None):
 
 
 def _on_click(x, y, button, pressed):
+    global _pending_type_target, _pending_value, _pending_action_type
     if not is_recording or not pressed:
         return
     if button != mouse.Button.left:
@@ -599,6 +600,7 @@ def _on_click(x, y, button, pressed):
 
 
 def _on_press(key):
+    global _pending_type_target, _pending_value, _pending_action_type
     if not is_recording:
         return
     if _pending_type_target is None:
