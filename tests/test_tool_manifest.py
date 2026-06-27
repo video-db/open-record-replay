@@ -14,9 +14,11 @@ def test_loads_default_tool_manifest():
     manifest = load_tool_manifest()
 
     assert manifest["version"] == 1
-    assert "playwright" in manifest["tools"]
-    assert manifest["surfaces"]["web_browser"]["preferred_tools"] == ["playwright"]
+    assert "native_accessibility" in manifest["tools"]
+    assert manifest["surfaces"]["web_browser"]["preferred_tools"] == ["native_accessibility"]
+    assert manifest["surfaces"]["web_browser"]["fallback_tools"] == ["visual_computer_use"]
     assert manifest["surfaces"]["desktop_app"]["preferred_tools"] == ["native_accessibility"]
+    assert manifest["surfaces"]["hybrid"]["fallback_tools"] == ["visual_computer_use"]
 
 
 def test_invalid_manifest_uses_fallback(tmp_path: Path):
@@ -39,5 +41,5 @@ def test_tool_details_include_platform_guidance():
     details = tool_details(["native_accessibility"], FALLBACK_MANIFEST)
 
     assert details[0]["name"] == "native_accessibility"
-    assert details[0]["platforms"]["macos"] == "Accessibility API / AX"
+    assert "osascript" in details[0]["platforms"]["macos"]
     assert details[0]["platforms"]["windows"] == "UI Automation / UIA"

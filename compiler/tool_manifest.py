@@ -11,17 +11,12 @@ MANIFEST_PATH = Path(__file__).with_name("recommended_tools.json")
 FALLBACK_MANIFEST = {
     "version": 1,
     "tools": {
-        "playwright": {
-            "display_name": "Playwright or browser automation",
-            "recommended_setup": True,
-            "use_when": "Browser page workflows with DOM-visible controls.",
-        },
         "native_accessibility": {
             "display_name": "Native accessibility controls",
             "recommended_setup": True,
-            "use_when": "Desktop apps, OS UI, file pickers, and browser chrome.",
+            "use_when": "Visible app replay across desktop apps, browser windows, OS UI, file pickers, and browser chrome.",
             "platforms": {
-                "macos": "Accessibility API / AX",
+                "macos": "Accessibility API / AX, System Events, osascript, Finder clipboard, and screencapture",
                 "windows": "UI Automation / UIA",
                 "linux": "AT-SPI/accessibility APIs",
             },
@@ -34,9 +29,9 @@ FALLBACK_MANIFEST = {
     },
     "surfaces": {
         "web_browser": {
-            "preferred_tools": ["playwright"],
-            "fallback_tools": ["native_accessibility", "visual_computer_use"],
-            "guidance": ["Prefer browser automation for DOM-visible browser page controls."],
+            "preferred_tools": ["native_accessibility"],
+            "fallback_tools": ["visual_computer_use"],
+            "guidance": ["Replay the recorded visible browser app directly with native desktop automation."],
         },
         "desktop_app": {
             "preferred_tools": ["native_accessibility"],
@@ -44,9 +39,9 @@ FALLBACK_MANIFEST = {
             "guidance": ["Prefer platform-native accessibility controls for desktop app windows and OS UI."],
         },
         "hybrid": {
-            "preferred_tools": ["playwright", "native_accessibility"],
+            "preferred_tools": ["native_accessibility"],
             "fallback_tools": ["visual_computer_use"],
-            "guidance": ["Use browser automation for web-page steps and native accessibility for OS dialogs."],
+            "guidance": ["Replay the recorded visible app/browser directly with native desktop automation."],
         },
         "terminal": {
             "preferred_tools": ["terminal"],
