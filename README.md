@@ -69,7 +69,7 @@ Three tools should appear:
 |------|-------------|
 | `record_skill_tool(name, lead_in_seconds=0)` | Start a human-operated workflow recording |
 | `stop_recording_tool(trim_end_seconds=0)` | Stop recording after the operator says stop, get events + `video_id` |
-| `compile_skill_tool(video_id, name)` | Generate `SKILL.json` + `SKILL.md` |
+| `compile_skill_tool(video_id, name)` | Generate `SKILL.json` + `SKILL.md`, then install `SKILL.md` globally for future agent use |
 
 ## Usage
 
@@ -80,6 +80,7 @@ record_skill_tool("my-workflow", lead_in_seconds=5)
     → operator says "stop"
     → agent calls stop_recording_tool(trim_end_seconds=10)
     → agent calls compile_skill_tool(video_id, "my-workflow")
+    → agent verifies/reports global_skill_md_path for future use
 ```
 
 Recording is human-in-the-loop. The agent starts recording, announces that
@@ -102,6 +103,11 @@ events so the generated skill does not include the operator returning to the
 terminal, browser, or chat window.
 
 Compiled skills land in `~/.mcp-videodb/skills/<name>/SKILL.json` and `SKILL.md`.
+After `SKILL.md` is created, `compile_skill_tool` also installs it into the
+agent's global skills directory, `~/.codex/skills/<name>/SKILL.md` by default,
+and returns `global_skill_md_path` plus an `agent_instruction` reminding the
+agent to verify or report the global install. Agents should ensure this global
+install step has happened so the skill is available in future runs.
 Every generated `SKILL.json` includes an `execution_strategy` describing whether
 the workflow is browser, desktop, hybrid, terminal, file-system, or unknown. This
 is guidance for the replaying agent, not a replay orchestrator.

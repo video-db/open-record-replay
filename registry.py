@@ -1,11 +1,12 @@
 """Skill registry management: load, save, version, index."""
 
 import json
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
 from compiler.md_generator import generate_skill_md
-from config import SKILLS_ROOT
+from config import AGENT_GLOBAL_SKILLS_ROOT, SKILLS_ROOT
 
 
 def load_registry() -> dict:
@@ -72,6 +73,19 @@ async def save_skill_md(skill: dict) -> Path:
     path = SKILLS_ROOT / skill["name"] / "SKILL.md"
     path.write_text(md, encoding="utf-8")
     return path
+
+
+def install_skill_globally(skill: dict, md_path: Path) -> Path:
+    """Install a generated SKILL.md into the agent's global skill directory."""
+    name = skill["name"]
+    destination_dir = AGENT_GLOBAL_SKILLS_ROOT / name
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination_path = destination_dir / "SKILL.md"
+
+    if md_path.resolve() != destination_path.resolve():
+        shutil.copy2(md_path, destination_path)
+
+    return destination_path
 
 
 def delete_skill(name: str):
