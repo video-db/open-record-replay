@@ -117,6 +117,7 @@ async def generate_skill_md(skill: dict) -> str:
         content = _strip_code_fences(content)
         content = _clean_mojibake(content)
         content = _validate_and_clean_md(content, skill)
+        content = _replace_inputs_section(content, skill)
         content = _append_execution_guidance_section(content, skill)
         content = _append_self_improvement_section(content)
         return content
@@ -229,7 +230,115 @@ def _validate_and_clean_md(content: str, skill: dict) -> str:
     content = re.sub(r'\bAX(Button|TextField|PopUpButton|Checkbox|MenuItem|RadioButton|StaticText|Link|TextArea)\b', '', content)
     content = re.sub(r'\(no scene match\)', '', content, flags=re.IGNORECASE)
     content = re.sub(r'\n{3,}', '\n\n', content)
+    content = _strip_dark_frame_boilerplate(content)
+    content = _strip_platform_specifics(content)
     return content.strip() + "\n"
+
+
+def _replace_inputs_section(content: str, skill: dict) -> str:
+    inputs_block = _build_inputs_block(skill)
+    if not inputs_block:
+        return content
+    header = "## Inputs"
+    lines = content.split("\n")
+    start = None
+    end = None
+    for i, line in enumerate(lines):
+        if line.strip() == header:
+            start = i
+        elif start is not None and line.startswith("## "):
+            end = i
+            break
+    if start is not None:
+        new_lines = lines[:start + 1]
+        new_lines.append(inputs_block)
+        if end is not None and end > start:
+            new_lines.extend(lines[end:])
+        else:
+            new_lines.append("")
+            new_lines.extend(lines[start + 1:])
+        return "\n".join(new_lines)
+    # Insert after ## When to use this
+    for i, line in enumerate(lines):
+        if line.strip().startswith("## When to use this"):
+            for j in range(i + 1, len(lines)):
+                if lines[j].startswith("## "):
+                    new_lines = lines[:j] + [header, inputs_block, ""] + lines[j:]
+                    return "\n".join(new_lines)
+            break
+    return content
+
+
+def _build_inputs_block(skill: dict) -> str:
+    inputs = skill.get("inputs", {})
+    if not isinstance(inputs, dict) or not inputs:
+        return ""
+    lines = []
+    for iname, ispec in inputs.items():
+        if isinstance(ispec, dict):
+            parts = []
+            fmt = ispec.get("format", "")
+            ex = ispec.get("example", "")
+            desc = ispec.get("description", "")
+            vals = ispec.get("values", [])
+            if desc:
+                parts.insert(0, desc)
+            if fmt:
+                parts.append(f"Format: {fmt}")
+            if vals:
+                parts.append(f"One of: {', '.join(str(v) for v in vals)}")
+            if ex:
+                parts.append(f"Example: {ex}")
+            if not parts:
+                parts.append(f"Type: {ispec.get('type', 'string')}")
+            lines.append(f"- `{iname}`: {'; '.join(parts)}")
+        else:
+            lines.append(f"- `{iname}`: {ispec}")
+    return "\n".join(lines)
+
+
+def _strip_dark_frame_boilerplate(content: str) -> str:
+    content = re.sub(
+        r"\bI can'?t determine what the user is doing from the provided image"
+        r"(?: because it appears blank/?too dark with no visible screen content)?"
+        r"(?:\.?\s*If you upload a clearer screenshot or describe the UI,?\s*"
+        r"I can tell you:?\s*(?:-\s*which element is being interacted with,?\s*)?"
+        r"(?:-\s*what value is being entered or selected,?\s*)?"
+        r"(?:-\s*what visible change results\.?\s*)?)?",
+        "",
+        content,
+        flags=re.IGNORECASE,
+    )
+    content = re.sub(
+        r"\bI can'?t actually see any application (?:or screen content )?in the provided image\."
+        r"(?: The image appears essentially black/?empty,? with no readable UI,? text,? buttons,? or controls visible\.?)?",
+        "",
+        content,
+        flags=re.IGNORECASE,
+    )
+    content = re.sub(r'\bblank/?too dark with no visible screen content\b', '', content, flags=re.IGNORECASE)
+    content = re.sub(r'\bIf you upload a clearer screenshot or describe the UI,? I can tell you\b[^.]*\.?', '', content, flags=re.IGNORECASE)
+    content = re.sub(r'\bThe image appears essentially black/?empty\b[^.]*\.', '', content, flags=re.IGNORECASE)
+    content = re.sub(r'\n{3,}', '\n\n', content)
+    return content
+
+
+def _strip_platform_specifics(content: str) -> str:
+    patterns = [
+        (r'\b(macOS|Mac OS|OS X|darwin)\b', 'the operating system'),
+        (r'\b(Brave Browser|Brave)\b', 'the browser'),
+        (r'\bCmd\+Shift\+G\b', 'the path navigation shortcut'),
+        (r'\bCmd\+O\b', 'the open shortcut'),
+        (r'\bCtrl\+O\b', 'the open shortcut'),
+    ]
+    for pattern, replacement in patterns:
+        content = re.sub(pattern, replacement, content, flags=re.IGNORECASE)
+    content = re.sub(
+        r'(?:/(?:Users|home|mnt)/[^\s,;:()]*)+(?:\.\w+)?',
+        lambda m: m.group(0) if '{{' in m.group(0) else 'the local file path',
+        content,
+    )
+    return content
 
 
 def _append_execution_guidance_section(content: str, skill: dict) -> str:
@@ -262,10 +371,11 @@ def _append_execution_guidance_section(content: str, skill: dict) -> str:
         lines.append(f"- Fallback tool path: {_tool_names_sentence(fallback_tools)}.")
     for note in notes:
         lines.append(f"- {note}")
-    lines.append("- Use native system automation for replay. On macOS, use osascript/System Events, AX inspection, Finder clipboard file paste, keyboard shortcuts, screencapture, and visual checks. On Windows use UI Automation / UIA. On Linux use AT-SPI/accessibility APIs.")
-    lines.append("- For browser steps, control the recorded visible browser app as a desktop app. Keep the user's existing browser, profile, login, extensions, and window state.")
-    lines.append("- Do not use any separate browser automation session for normal replay.")
-    lines.append("- Prefer native accessibility and system commands for the existing app/window; use visual computer-use only when structured controls are unavailable.")
+    if surface != "web_browser":
+        lines.append("- Use native system automation for replay. On macOS, use osascript/System Events, AX inspection, Finder clipboard file paste, keyboard shortcuts, screencapture, and visual checks. On Windows use UI Automation / UIA. On Linux use AT-SPI/accessibility APIs.")
+        lines.append("- For browser steps, control the recorded visible browser app as a desktop app. Keep the user's existing browser, profile, login, extensions, and window state.")
+        lines.append("- Do not use any separate browser automation session for normal replay.")
+        lines.append("- Prefer native accessibility and system commands for the existing app/window; use visual computer-use only when structured controls are unavailable.")
     lines.append("- Resolve targets by accessibility role, label, value, placeholder, and nearby visual context before using coordinates.")
     lines.append("- Use recorded relative positions only as a fallback inside the matching app/window, not as absolute screen coordinates.")
     lines.append("- Verify visible state after navigation, file pickers, submits, sends, deletes, or other high-impact actions before continuing.")
@@ -358,30 +468,10 @@ def _template_fallback(skill: dict) -> str:
                 lines.append(f"- {p}")
         lines.append("")
 
-    inputs = skill.get("inputs", {})
-    if isinstance(inputs, dict) and inputs:
+    inputs_block = _build_inputs_block(skill)
+    if inputs_block:
         lines.append("## Inputs")
-        for iname, ispec in inputs.items():
-            if isinstance(ispec, dict):
-                parts = []
-                typ = ispec.get("type", "string")
-                fmt = ispec.get("format", "")
-                ex = ispec.get("example", "")
-                desc = ispec.get("description", "")
-                vals = ispec.get("values", [])
-                if desc:
-                    parts.insert(0, desc)
-                if fmt:
-                    parts.append(f"Format: {fmt}")
-                if vals:
-                    parts.append(f"One of: {', '.join(str(v) for v in vals)}")
-                if ex:
-                    parts.append(f"Example: {ex}")
-                if not parts:
-                    parts.append(f"Type: {typ}")
-                lines.append(f"- `{iname}`: {'; '.join(parts)}")
-            else:
-                lines.append(f"- `{iname}`: {ispec}")
+        lines.append(inputs_block)
         lines.append("")
 
     steps = skill.get("steps", [])
@@ -429,9 +519,10 @@ def _template_fallback(skill: dict) -> str:
         lines.append("")
 
     lines.append("")
-    return _append_self_improvement_section(
+    content = _append_self_improvement_section(
         _append_execution_guidance_section("\n".join(lines), skill)
     )
+    return _validate_and_clean_md(content, skill)
 
 
 def _string_list(value: object) -> list[str]:

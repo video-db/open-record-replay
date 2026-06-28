@@ -29,15 +29,24 @@ Before writing the SKILL, step back and understand the full recording:
    - Clicks in the video player area during playback are likely ad-skipping,
      pausing, or resuming — describe their apparent purpose
 
-3. The skill's DESCRIPTION must state the TASK OUTCOME (what was accomplished)
+3. Follow data flow across applications. When steps show the user switching
+   between different applications or browser tabs (the foreground_window changes),
+   and a later step types a value, the user may be retrieving data from the other
+   application rather than typing from memory. Note this in the step description
+   (e.g., "switch to the other application, locate the value, then return and
+   enter it"). Do not treat it as typed from memory unless the event log shows
+   no foreground_window switch before the type action. This rule applies to any
+   pair of applications — nothing is specific to one app type or workflow.
+
+4. The skill's DESCRIPTION must state the TASK OUTCOME (what was accomplished)
    and when an agent should use it, not the mechanics of individual steps.
 
-4. VERIFICATION must be derived from the TASK OUTCOME. Ask: what visible
+5. VERIFICATION must be derived from the TASK OUTCOME. Ask: what visible
    evidence on screen proves this task was achieved? Check the end state
    (e.g., watch page loaded, video playing) — not incidental intermediate
    states (e.g., an ad that happened to play).
 
-5. Output the verification checks in a field named exactly "verification"
+6. Output the verification checks in a field named exactly "verification"
    (not "verifications"). Each check is: {"type": "ax_element" | "visual" |
    "transcript", "check": "description of what to verify"}.
 
@@ -170,6 +179,27 @@ inputs over recorded literals.
   fragments unless the UI truly has multiple fields.
 - Preserve fixed UI labels such as "Upload from your computer" as enum options or step
   instructions, not as hardcoded destination/file inputs.
+
+## Platform Neutrality
+The skill must be reusable across operating systems and browsers. NEVER bake in
+platform-specific details:
+
+- NEVER mention OS names (macOS, Windows, Linux, darwin, win32) in any field.
+  Use "the operating system" or describe the UI generically.
+- NEVER hardcode browser names (Chrome, Brave, Safari, Firefox, Edge). Use "the
+  browser" or "a web browser".
+- NEVER mention OS-specific keyboard shortcuts (Cmd+Shift+G, Ctrl+O, Alt+Tab).
+  Describe the intended action instead ("navigate to the folder", "open the file").
+- NEVER hardcode local file paths (/Users/..., C:\\Users\\..., ~/...). Always
+  template them as named {{inputs}} like {{file_path}}, {{video_file_path}}, etc.
+- Describe UI elements by their visible label text, position (top-right, center,
+  bottom-left), and purpose — not by what platform they appear on.
+- For file picker interactions: describe it as "the file selection dialog", not
+  "macOS file picker" or "Windows file explorer".
+- The `start_context` label should describe the application page or state (e.g.,
+  "YouTube Studio upload page"), not "Brave Browser" or "Chrome on Windows".
+- The `recorded_surface` field, if present, must only contain factual data from
+  the recording — do not invent OS or browser names.
 
 ## Task-Level Understanding
 Before writing steps, look at the FULL event sequence AND scene descriptions to infer:

@@ -328,6 +328,15 @@ async def stop_recording(trim_end_seconds: float = 0.0) -> dict:
 
 
 async def _handle_ax_event(event: dict):
+    if isinstance(event, dict) and event.get("event") == "action":
+        fg_window = ""
+        target = event.get("target", {})
+        if isinstance(target, dict):
+            fg_window = str(target.get("foreground_window") or "").strip()
+        event["surface"] = {
+            "platform": sys.platform,
+            "window_title": fg_window,
+        }
     with open(state.events_path, "a") as f:
         f.write(json.dumps(event) + "\n")
 

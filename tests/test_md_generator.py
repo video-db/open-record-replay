@@ -73,7 +73,7 @@ def test_appends_browser_execution_guidance():
     assert "Preferred tool path: `native_accessibility`" in result
     assert "Fallback tool path: `visual_computer_use`" in result
     assert "recorded visible browser app" in result
-    assert "Do not use any separate browser automation session" in result
+    assert "Do not use any separate browser automation session" not in result
     assert "Before upload/send/post/delete actions" in result
     assert "Do not repeat them unless" in result
     assert "Preferred setup before replay: Native accessibility controls." in result

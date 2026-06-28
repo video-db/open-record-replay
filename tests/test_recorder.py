@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from capture.recorder import _get_ax_binary_path, _operator_recording_guidance, _poll_export
+from capture.recorder import _get_ax_binary_path, _operator_recording_guidance, _poll_export, _handle_ax_event
 from capture.ax_client import AxClient
 
 
@@ -112,3 +112,66 @@ class TestPollExport:
             if old_conn is not None:
                 from state import state
                 state.conn = old_conn
+
+
+class TestHandleAxEvent:
+    def test_enriches_action_event_with_surface(self, tmp_path):
+        events_path = tmp_path / "events.jsonl"
+        from state import state
+        old_events_path = state.events_path
+        state.events_path = str(events_path)
+        try:
+            event = {
+                "event": "action",
+                "ts": 1000,
+                "action": "click",
+                "target": {
+                    "type": "AXButton",
+                    "label": "Submit",
+                    "foreground_window": "YouTube Studio - Chrome",
+                },
+            }
+            asyncio.run(_handle_ax_event(event))
+
+            lines = events_path.read_text().strip().split("\n")
+            written = json.loads(lines[0])
+            assert written["surface"]["platform"] == "win32"
+            assert written["surface"]["window_title"] == "YouTube Studio - Chrome"
+        finally:
+            state.events_path = old_events_path
+
+    def test_enriches_event_with_empty_foreground_window(self, tmp_path):
+        events_path = tmp_path / "events.jsonl"
+        from state import state
+        old_events_path = state.events_path
+        state.events_path = str(events_path)
+        try:
+            event = {
+                "event": "action",
+                "ts": 1000,
+                "action": "click",
+                "target": {"type": "AXButton", "label": "Submit"},
+            }
+            asyncio.run(_handle_ax_event(event))
+
+            lines = events_path.read_text().strip().split("\n")
+            written = json.loads(lines[0])
+            assert written["surface"]["platform"] == "win32"
+            assert written["surface"]["window_title"] == ""
+        finally:
+            state.events_path = old_events_path
+
+    def test_does_not_enrich_non_action_event(self, tmp_path):
+        events_path = tmp_path / "events.jsonl"
+        from state import state
+        old_events_path = state.events_path
+        state.events_path = str(events_path)
+        try:
+            event = {"event": "error", "message": "something failed"}
+            asyncio.run(_handle_ax_event(event))
+
+            lines = events_path.read_text().strip().split("\n")
+            written = json.loads(lines[0])
+            assert "surface" not in written
+        finally:
+            state.events_path = old_events_path

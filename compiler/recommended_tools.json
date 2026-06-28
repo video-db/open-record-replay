@@ -30,12 +30,12 @@
   },
   "surfaces": {
     "web_browser": {
-      "preferred_tools": ["native_accessibility"],
-      "fallback_tools": ["visual_computer_use"],
+      "preferred_tools": ["browser_automation", "keyboard_input"],
+      "fallback_tools": ["visual_automation"],
       "guidance": [
-        "Replay the recorded visible browser app directly with native desktop automation; do not switch to another browser or app unless the user approves.",
-        "On macOS, use system commands such as osascript/System Events, AX inspection, Finder clipboard file paste, keyboard shortcuts, screencapture, and visual checks against the existing browser window.",
-        "Do not use any separate browser automation session for normal replay."
+        "Use browser DOM automation (click, type, setFiles) for page interactions. Prefer DOM file chooser injection (setFiles) when available.",
+        "Fall back to native OS file picker automation only when the browser blocks DOM file injection.",
+        "Match elements by accessible name, placeholder, label text, and role before using coordinate-based fallbacks."
       ]
     },
     "desktop_app": {

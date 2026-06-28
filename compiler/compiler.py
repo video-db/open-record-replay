@@ -18,45 +18,73 @@ from config import (
 from state import state
 from compiler.prompts import build_prompt, COMPILATION_SYSTEM_PROMPT
 from registry import save_skill
+from compiler.tool_manifest import surface_tool_guidance, load_tool_manifest
+
+SCENE_INDEX_PROMPT = (
+    "Multiple frames from this time interval are shown. Describe what you see "
+    "in EACH distinct state. If the active browser tab changed across frames "
+    "(check the title bar text for clues), or if a different application appeared, "
+    "describe each state separately -- do not collapse them into a single summary.\n\n"
+    "For each state:\n"
+    "1. What application, website, page, or screen is visible? What browser tab "
+    "is active? Check the title bar and address bar.\n"
+    "2. What text, labels, buttons, fields, data, dropdowns, radio buttons, "
+    "checkboxes, or other UI elements are visible? List everything you can read.\n"
+    "3. If the user is mid-interaction (clicking, typing, selecting), what element "
+    "is being used and what value is being entered or chosen?\n"
+    "4. What has visibly changed from a typical idle state -- progress bars, toasts, "
+    "modals, highlights, selections, checkmarks appearing, new content loading?\n\n"
+    "For example, if one frame shows a video upload page and another frame shows "
+    "a spreadsheet or document editor, describe both separately. Never say "
+    "\"I can't determine what the user is doing\" or \"blank/too dark\" or "
+    "\"upload a clearer screenshot.\" If you can see a window border, a button "
+    "outline, or partial text, describe that.\n\n"
+    "Use generic terms: say 'a file selection dialog' not 'Windows file picker', "
+    "'the browser' not a specific browser name. Do not mention the operating system "
+    "or browser name unless the UI text itself displays it."
+)
+
 
 logger = logging.getLogger(__name__)
 
 
-async def compile_skill(video_id: str, name: str) -> dict:
+async def compile_skill(video_id: str, name: str, scene_index_id: str | None = None) -> dict:
     video = state.coll.get_video(video_id)
 
-    scene_index_id = None
-    try:
-        scene_index_id = video.index_scenes(
-            extraction_type=SceneExtractionType.time_based,
-            extraction_config={
-                "time": SCENE_INDEX_TIME_INTERVAL,
-                "frame_count": SCENE_INDEX_FRAME_COUNT,
-            },
-            prompt="Describe what the user is doing on screen at this moment: which element they are interacting with (clicking into a field, typing a value, selecting an option from a dropdown, choosing a radio button or checkbox, pressing a button), what value they are entering or selecting, and any visible changes that result from the interaction (e.g., dropdown closes with new value shown, radio button becomes selected, checkbox becomes checked, success message appears, new page loads).",
-        )
-    except Exception as e:
-        msg = str(e)
-        match = re.search(r"with id (\w+) already exists", msg)
-        if match:
-            old_id = match.group(1)
-            try:
-                video.delete_scene_index(old_id)
-                logger.info(f"Deleted stale scene index {old_id}, creating fresh")
-            except Exception:
-                logger.warning(f"Could not delete stale index {old_id}")
+    if scene_index_id:
+        scenes = video.get_scene_index(scene_index_id)
+    else:
+        try:
             scene_index_id = video.index_scenes(
                 extraction_type=SceneExtractionType.time_based,
                 extraction_config={
                     "time": SCENE_INDEX_TIME_INTERVAL,
                     "frame_count": SCENE_INDEX_FRAME_COUNT,
                 },
-                prompt="Describe what the user is doing on screen at this moment: which element they are interacting with (clicking into a field, typing a value, selecting an option from a dropdown, choosing a radio button or checkbox, pressing a button), what value they are entering or selecting, and any visible changes that result from the interaction (e.g., dropdown closes with new value shown, radio button becomes selected, checkbox becomes checked, success message appears, new page loads).",
+                prompt=SCENE_INDEX_PROMPT,
             )
-        else:
-            raise
+        except Exception as e:
+            msg = str(e)
+            match = re.search(r"with id (\w+) already exists", msg)
+            if match:
+                old_id = match.group(1)
+                try:
+                    video.delete_scene_index(old_id)
+                    logger.info(f"Deleted stale scene index {old_id}, creating fresh")
+                except Exception:
+                    logger.warning(f"Could not delete stale index {old_id}")
+                scene_index_id = video.index_scenes(
+                    extraction_type=SceneExtractionType.time_based,
+                    extraction_config={
+                        "time": SCENE_INDEX_TIME_INTERVAL,
+                        "frame_count": SCENE_INDEX_FRAME_COUNT,
+                    },
+                    prompt=SCENE_INDEX_PROMPT,
+                )
+            else:
+                raise
+        scenes = await _poll_scene_index(video, scene_index_id)
 
-    scenes = await _poll_scene_index(video, scene_index_id)
     logger.info(f"Scene index ready: {len(scenes)} scenes")
     transcript = _safe_get_transcript(video)
 
@@ -89,8 +117,7 @@ async def compile_skill(video_id: str, name: str) -> dict:
     if not events:
         raise RuntimeError("No events remain after noise filtering")
 
-    event_scene_offset = _estimate_event_scene_offset(events, scenes, start_ms)
-    matched = _match_events_to_scenes(events, scenes, start_ms, event_scene_offset)
+    matched = _match_events_to_scenes(events, scenes, start_ms)
     prompt = build_prompt(name, events, matched, transcript)
     skill_json = None
 
@@ -125,7 +152,7 @@ async def compile_skill(video_id: str, name: str) -> dict:
     skill_json["video_id"] = video_id
     skill_json["scene_index_id"] = scene_index_id
     skill_json["compiled_at"] = datetime.now(timezone.utc).isoformat()
-    _attach_expected_scenes(skill_json, scenes, metadata, event_scene_offset)
+    _attach_expected_scenes(skill_json, scenes, metadata)
 
     errors = _validate_skill(skill_json)
     if errors:
@@ -144,7 +171,7 @@ async def compile_skill(video_id: str, name: str) -> dict:
         skill_json["video_id"] = video_id
         skill_json["scene_index_id"] = scene_index_id
         skill_json["compiled_at"] = datetime.now(timezone.utc).isoformat()
-        _attach_expected_scenes(skill_json, scenes, metadata, event_scene_offset)
+        _attach_expected_scenes(skill_json, scenes, metadata)
 
     save_skill(skill_json)
     return skill_json
@@ -285,7 +312,7 @@ async def _poll_scene_index(video, scene_index_id: str, max_attempts: int = 20) 
     logger.warning(f"Scene index poll exhausted — got {len(scenes)} scenes")
     return scenes or []
 
-def _match_events_to_scenes(events: list[dict], scenes: list[dict], start_ms: int, fallback_offset: float = 0.0) -> list[dict]:
+def _match_events_to_scenes(events: list[dict], scenes: list[dict], start_ms: int) -> list[dict]:
     action_events = [event for event in events if event.get("event") == "action"]
     semantic_scene_indices: list[int | None] = [None] * len(action_events)
 
@@ -322,7 +349,7 @@ def _match_events_to_scenes(events: list[dict], scenes: list[dict], start_ms: in
             scene_match = scenes[scene_idx]
             video_time = (float(scene_match.get("start", 0)) + float(scene_match.get("end", 0))) / 2.0
         else:
-            video_time = max(0.0, event_time - fallback_offset)
+            video_time = max(0.0, event_time)
             scene_match = _find_scene_for_time(scenes, video_time)
         matched.append({
             "event": event,
@@ -343,14 +370,19 @@ def _find_scene_index_for_value(scenes: list[dict], value: str, start_index: int
     for idx in range(max(0, start_index), len(scenes)):
         desc = str(scenes[idx].get("description") or "")
         compact_desc = _compact_text(desc)
-        if normalized_value in compact_desc or (len(normalized_value) <= 3 and "youtube" in compact_desc and normalized_value in "youtube"):
-            score = 0
-            lowered = desc.lower()
-            if "typing" in lowered or "entered" in lowered or "search" in lowered:
-                score += 2
-            if "autocomplete" in lowered or "suggestion" in lowered:
-                score += 1
-            candidates.append((score, idx))
+        if normalized_value not in compact_desc:
+            continue
+        score = 0
+        lowered = desc.lower()
+        if "typing" in lowered or "entered" in lowered or "search" in lowered:
+            score += 2
+        if "autocomplete" in lowered or "suggestion" in lowered:
+            score += 1
+        if len(normalized_value) >= 4:
+            score += 1
+        if score == 0:
+            continue
+        candidates.append((score, idx))
     if not candidates:
         return None
     candidates.sort(key=lambda item: (-item[0], item[1]))
@@ -460,6 +492,11 @@ def _ground_steps_in_matched_events(skill_json: dict, matched: list[dict]) -> No
         else:
             step_value = None
 
+        if scene_description:
+            temp_step = {"target": target, "surface": _normalize_surface(event.get("surface"))}
+            if _scene_conflicts_with_step(scene_description, temp_step):
+                scene_description = ""
+
         step = {
             "id": len(grounded) + 1,
             "action": action,
@@ -476,16 +513,78 @@ def _ground_steps_in_matched_events(skill_json: dict, matched: list[dict]) -> No
             step["value"] = step_value
         grounded.append(step)
 
+    grounded = _dedup_consecutive_steps(grounded)
+    _enrich_cross_app_context(grounded)
     if grounded:
         skill_json["steps"] = grounded
         skill_json["verification"] = _synthesize_verification(skill_json)
+
+
+def _enrich_cross_app_context(steps: list[dict]) -> None:
+    fg = lambda s: str((s.get("target") or {}).get("foreground_window") or "").lower()
+    for i in range(1, len(steps)):
+        prev_fg = fg(steps[i - 1])
+        cur_fg = fg(steps[i])
+        if not prev_fg or not cur_fg or prev_fg == cur_fg:
+            continue
+        vc = str(steps[i].get("visual_context") or "")
+        is_generic = (
+            vc.startswith("The AXButton labeled")
+            or vc.startswith("The AXTextField labeled")
+            or vc.startswith("The element labeled")
+            or vc.startswith("The button labeled")
+            or not vc.strip()
+        )
+        if not is_generic:
+            continue
+        steps[i]["visual_context"] = (
+            f"Preceded by interaction in a different application "
+            f"(foreground changed from '{steps[i-1].get('target', {}).get('foreground_window', 'unknown')}' "
+            f"to '{steps[i].get('target', {}).get('foreground_window', 'unknown')}'). "
+            f"The data may originate from the prior application."
+        )
+
+
+def _dedup_consecutive_steps(steps: list[dict]) -> list[dict]:
+    if len(steps) <= 1:
+        return steps
+    result = []
+    for step in steps:
+        if not result:
+            result.append(step)
+            continue
+        prev = result[-1]
+        prev_ref = prev.get("recording_ref", {})
+        cur_ref = step.get("recording_ref", {})
+        prev_fg = (prev.get("target") or {}).get("foreground_window", "")
+        cur_fg = (step.get("target") or {}).get("foreground_window", "")
+        prev_label = (prev.get("target") or {}).get("label", "")
+        cur_label = (step.get("target") or {}).get("label", "")
+        same_ref = (
+            prev_ref.get("start") == cur_ref.get("start")
+            and prev_ref.get("end") == cur_ref.get("end")
+        )
+        same_target = prev_label == cur_label and prev_fg == cur_fg
+        if same_ref and same_target:
+            if not prev.get("value") and step.get("value"):
+                prev["value"] = step["value"]
+                prev["action"] = step.get("action", prev.get("action"))
+            prev_vc = str(prev.get("visual_context") or "")
+            cur_vc = str(step.get("visual_context") or "")
+            if len(cur_vc) > len(prev_vc):
+                prev["visual_context"] = cur_vc
+            if not prev.get("expected_scene") and step.get("expected_scene"):
+                prev["expected_scene"] = step["expected_scene"]
+            continue
+        result.append(step)
+    return result
 
 
 def _best_step_context(old_step: dict, scene_description: str, event: dict, action: str) -> str:
     old_context = str(old_step.get("visual_context") or "").strip()
     if old_context and not _looks_unmatched_or_internal(old_context):
         return old_context
-    if scene_description:
+    if scene_description and not _looks_like_dark_frame(scene_description):
         return _summarize_scene_for_step(scene_description, event, action)
     return _fallback_visual_context(action, _normalize_target(event.get("target")))
 
@@ -498,6 +597,22 @@ def _looks_unmatched_or_internal(text: str) -> bool:
         or "element_at_" in lowered
         or "terminal-like" in lowered
         or "no clear form field" in lowered
+    )
+
+
+def _looks_like_dark_frame(text: str) -> bool:
+    lowered = text.lower()
+    lowered = lowered.replace("\u2019", "'").replace("\u2018", "'")
+    return (
+        "i can't determine what the user is doing" in lowered
+        or "blank/too dark" in lowered
+        or "blank too dark" in lowered
+        or "upload a clearer screenshot" in lowered
+        or "no visible screen content" in lowered
+        or "i can't actually see" in lowered
+        or "image appears essentially black" in lowered
+        or "screen appears completely black" in lowered
+        or "no readable ui" in lowered
     )
 
 
@@ -519,42 +634,6 @@ def _find_scene_for_time(scenes: list[dict], video_time: float) -> dict | None:
     return None
 
 
-def _estimate_event_scene_offset(events: list[dict], scenes: list[dict], start_ms: int) -> float:
-    """Estimate delay between MCP event timestamps and exported video time.
-
-    The event recorder starts before the capture binary has produced the exported
-    video. When that startup delay exists, raw event times can exceed the video
-    duration, causing every step to match the final scene. Estimate the offset by
-    anchoring typed values to scene descriptions that mention those values.
-    """
-    anchors = []
-    for event in events:
-        if event.get("event") != "action" or event.get("action") not in {"type", "select"}:
-            continue
-        value = str(event.get("value") or "").strip().lower()
-        if not value:
-            continue
-        event_time = (event["ts"] - start_ms) / 1000.0
-        for scene in scenes:
-            desc = str(scene.get("description") or "").lower()
-            if value in desc or desc.replace(" ", "") .find(value.replace(" ", "")) >= 0:
-                scene_mid = (float(scene.get("start", 0)) + float(scene.get("end", 0))) / 2.0
-                anchors.append(event_time - scene_mid)
-                break
-    if anchors:
-        anchors.sort()
-        return anchors[len(anchors) // 2]
-
-    max_scene_end = max((float(s.get("end", 0)) for s in scenes), default=0.0)
-    event_times = [
-        (e["ts"] - start_ms) / 1000.0
-        for e in events
-        if e.get("event") == "action"
-    ]
-    if event_times and max(event_times) > max_scene_end and max_scene_end > 0:
-        return max(0.0, min(event_times) - scenes[0].get("start", 0))
-    return 0.0
-
 def _to_relative_seconds(end_time: float, metadata: dict) -> float:
     """Normalize recording_ref.end to relative seconds from recording start.
 
@@ -574,34 +653,31 @@ def _to_relative_seconds(end_time: float, metadata: dict) -> float:
     return end_time
 
 
-def _attach_expected_scenes(skill_json: dict, scenes: list[dict], metadata: dict, event_scene_offset: float = 0.0) -> None:
+def _attach_expected_scenes(skill_json: dict, scenes: list[dict], metadata: dict) -> None:
     max_scene_end = max((s.get("end", 0) for s in scenes), default=0)
-    step_refs = [
-        _to_relative_seconds(step.get("recording_ref", {}).get("end", 0), metadata)
-        for step in skill_json.get("steps", [])
-    ]
-    # The LLM may output recording_ref values either in event-recorder time or
-    # already in video/scene-index time. Only subtract the startup offset when
-    # refs extend beyond the indexed video timeline.
-    ref_offset = event_scene_offset if step_refs and max(step_refs) > max_scene_end else 0.0
     steps_no_match = 0
     for step in skill_json.get("steps", []):
+        existing = str(step.get("expected_scene") or "").strip()
+        if existing and not _looks_like_dark_frame(existing) and len(existing) > 100:
+            continue
         ref = step.get("recording_ref", {})
-        end_time = max(0.0, _to_relative_seconds(ref.get("end", 0), metadata) - ref_offset)
+        end_time = max(0.0, _to_relative_seconds(ref.get("end", 0), metadata))
         best = ""
-        for scene in scenes:
+        for i, scene in enumerate(scenes):
             if scene.get("start", 0) <= end_time <= scene.get("end", 0):
                 desc = scene.get("description", "")
-                if desc:
+                if desc and not _scene_conflicts_with_step(desc, step):
                     best = desc
                     break
-        if not best:
-            if end_time > max_scene_end and scenes:
-                last_desc = scenes[-1].get("description", "")
-                step["expected_scene"] = f"[AFTER RECORDING END] Last visible: {last_desc}"
-                steps_no_match += 1
-            else:
-                step["expected_scene"] = best
+        if best:
+            step["expected_scene"] = best
+            continue
+        if end_time > max_scene_end and scenes:
+            step["expected_scene"] = _fallback_visual_context(
+                step.get("action", "click"),
+                step.get("target", {}),
+            )
+            steps_no_match += 1
             continue
         step["expected_scene"] = best
     if steps_no_match > 0:
@@ -610,6 +686,46 @@ def _attach_expected_scenes(skill_json: dict, scenes: list[dict], metadata: dict
             f"{steps_no_match} step(s) beyond this range have no expected_scene. "
             f"Re-record the full workflow for complete step-by-step VLM guidance."
         )
+
+
+def _scene_conflicts_with_step(scene_desc: str, step: dict) -> bool:
+    step_fg = _step_foreground_name(step).lower()
+    if not step_fg:
+        return False
+    scene_lower = scene_desc.lower()
+    sheet_indicators = ("spreadsheet", "sheet")
+    web_indicators = ("browser", "web page")
+    terminal_indicators = ("terminal", "command prompt", "powershell", "bash")
+    scene_is_sheet = any(ind in scene_lower for ind in sheet_indicators)
+    scene_is_web = any(ind in scene_lower for ind in web_indicators)
+    scene_is_terminal = any(ind in scene_lower for ind in terminal_indicators)
+    step_is_sheet = any(ind in step_fg for ind in sheet_indicators)
+    step_is_terminal = any(ind in step_fg for ind in terminal_indicators)
+    step_is_web = (
+        not step_is_sheet
+        and not step_is_terminal
+        and any(ind in step_fg for ind in web_indicators)
+    )
+    if scene_is_sheet and not step_is_sheet:
+        return True
+    if scene_is_web and step_is_sheet and not scene_is_sheet:
+        return True
+    if scene_is_web and step_is_terminal:
+        return True
+    if scene_is_terminal and step_is_web:
+        return True
+    return False
+
+
+def _step_foreground_name(step: dict) -> str:
+    fg = (step.get("target") or {}).get("foreground_window", "")
+    if fg:
+        return str(fg)
+    surface = step.get("surface") or {}
+    wt = surface.get("window_title", "")
+    if not wt:
+        wt = surface.get("app_name", "")
+    return str(wt)
 
 
 def _prefilter_events(events: list[dict], screen_h: int = 1080, screen_w: int = 1920) -> list[dict]:
@@ -722,6 +838,11 @@ def _normalize_llm_output(skill: dict, name: str) -> dict:
         skill["preconditions"],
     )
     skill["required_tools"] = _normalize_required_tools(skill.get("required_tools"))
+    skill["execution_strategy"] = _normalize_execution_strategy(
+        skill.get("execution_strategy"),
+        skill["start_context"],
+    )
+    skill["recorded_surface"] = _normalize_surface(skill.get("recorded_surface"))
 
     normalized_steps = []
     for i, raw_step in enumerate(skill.get("steps", []) or []):
@@ -807,9 +928,51 @@ def _augment_standalone_inputs(skill: dict) -> None:
         if "file_path" not in inputs:
             inputs["file_path"] = {
                 "type": "string",
-                "example": "/path/to/file.ext",
+                "example": "/path/to/video.mp4",
                 "description": "Full local path of the file to upload or attach. Provide this at run time; do not hardcode a recorded path.",
             }
+
+    subtitle_terms = ("subtitle", "caption", ".srt", ".vtt", "subtitles", "captions", "with timing")
+    if any(term in text for term in subtitle_terms):
+        if "subtitle_file_path" not in inputs:
+            inputs["subtitle_file_path"] = {
+                "type": "string",
+                "example": "/path/to/captions.srt",
+                "description": "Full local path to the subtitle file (.srt, .vtt, etc.) to attach during upload.",
+            }
+        if "subtitle_language" not in inputs:
+            inputs["subtitle_language"] = {
+                "type": "enum",
+                "example": "English",
+                "values": ["English", "Spanish", "French", "German", "Other"],
+                "description": "Language of the subtitle file being uploaded.",
+            }
+
+    csv_terms = (".csv", "metadata csv", "csv metadata", "spreadsheet")
+    if any(term in text for term in csv_terms):
+        if "metadata_csv_path" not in inputs:
+            inputs["metadata_csv_path"] = {
+                "type": "string",
+                "example": "/path/to/metadata.csv",
+                "description": "Full local path to a CSV file containing video metadata (title, description, visibility, etc.) for batch or row-selected uploads.",
+            }
+        if "metadata_row_selector" not in inputs:
+            inputs["metadata_row_selector"] = {
+                "type": "string",
+                "example": "first",
+                "description": "Which row of the metadata CSV to use. Can be a row number, 'first', or a value to match in the first column.",
+            }
+
+    multi_file = (
+        "subtitle_file_path" in inputs
+        and "file_path" in inputs
+    )
+    if multi_file and "upload_folder_path" not in inputs:
+        inputs["upload_folder_path"] = {
+            "type": "string",
+            "example": "/path/to/package/folder",
+            "description": "Root folder containing the video, optional subtitle, and optional metadata CSV files.",
+        }
 
     conversation_terms = ("channel", "direct message", " dm ", "conversation", "composer", "chat", "message")
     if any(term in text for term in conversation_terms):
@@ -886,6 +1049,8 @@ def _synthesize_verification(skill: dict) -> list[dict]:
     for step in reversed(skill.get("steps", []) or []):
         context = str(step.get("expected_scene") or step.get("visual_context") or "").strip()
         if not context or context.lower() == "(no scene match)":
+            continue
+        if _looks_like_dark_frame(context):
             continue
         sentence = _best_verification_sentence(context, status_keywords)
         if sentence:
@@ -1037,11 +1202,6 @@ def _attach_step_surfaces_from_events(skill_json: dict, events: list[dict]) -> N
 
 
 def _attach_recorded_surfaces(skill_json: dict) -> None:
-    existing = _normalize_surface(skill_json.get("recorded_surface"))
-    if existing:
-        skill_json["recorded_surface"] = existing
-        return
-
     surfaces = [
         _normalize_surface(step.get("surface"))
         for step in skill_json.get("steps", [])
@@ -1170,6 +1330,39 @@ def _default_required_tools() -> list[dict]:
         {"name": "visual_automation", "reason": "Click, type, and visually identify elements on screen.", "kind": "recommended"},
         {"name": "shell_execution", "reason": "Open applications and navigate via shell commands.", "kind": "optional"},
     ]
+
+
+def _normalize_execution_strategy(strategy: object, start_context: dict) -> dict:
+    _SURFACE_MAP = {
+        "web": "web_browser",
+        "desktop_app": "desktop_app",
+        "terminal": "terminal",
+        "file": "file_system",
+        "workspace": "desktop_app",
+        "screen_state": "unknown",
+    }
+    if not isinstance(strategy, dict):
+        strategy = {}
+    if not isinstance(start_context, dict):
+        start_context = {}
+    context_kind = str(start_context.get("kind") or "").strip()
+    surface = str(strategy.get("surface") or "").strip()
+    surface = surface or _SURFACE_MAP.get(context_kind, "unknown")
+    if surface not in {"web_browser", "desktop_app", "hybrid", "terminal", "file_system", "unknown"}:
+        surface = _SURFACE_MAP.get(context_kind, "unknown")
+    guidance = surface_tool_guidance(surface)
+    return {
+        "surface": surface,
+        "preferred_tools": _clean_str_list(strategy.get("preferred_tools")) or guidance["preferred_tools"],
+        "fallback_tools": _clean_str_list(strategy.get("fallback_tools")) or guidance["fallback_tools"],
+        "notes": _clean_str_list(strategy.get("notes")) or guidance["guidance"],
+    }
+
+
+def _clean_str_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
 
 
 def _normalize_inputs(inputs) -> dict:

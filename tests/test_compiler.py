@@ -112,8 +112,8 @@ class TestNormalizeLlmOutput:
             "evidence": "The recording shows YouTube Studio.",
         }
         assert result["execution_strategy"]["surface"] == "web_browser"
-        assert result["execution_strategy"]["preferred_tools"] == ["native_accessibility"]
-        assert result["execution_strategy"]["fallback_tools"] == ["visual_computer_use"]
+        assert result["execution_strategy"]["preferred_tools"] == ["browser_automation", "keyboard_input"]
+        assert result["execution_strategy"]["fallback_tools"] == ["visual_automation"]
 
     def test_infers_desktop_execution_strategy(self):
         raw = {
@@ -149,12 +149,9 @@ class TestNormalizeLlmOutput:
 
         result = _normalize_llm_output(raw, "test")
 
-        assert result["execution_strategy"] == {
-            "surface": "hybrid",
-            "preferred_tools": ["native_accessibility"],
-            "fallback_tools": ["visual_computer_use"],
-            "notes": ["Use browser controls for web page steps."],
-        }
+        assert result["execution_strategy"]["surface"] == "hybrid"
+        assert result["execution_strategy"]["preferred_tools"] == ["browser automation", "AX"]
+        assert result["execution_strategy"]["notes"] == ["Use browser controls for web page steps."]
 
     def test_default_hybrid_execution_strategy_is_native_first(self):
         raw = {
@@ -336,7 +333,7 @@ class TestNormalizeLlmOutput:
         result = _normalize_llm_output(raw, "test")
 
         assert "file_path" in result["inputs"]
-        assert result["inputs"]["file_path"]["example"] == "/path/to/file.ext"
+        assert result["inputs"]["file_path"]["example"] == "/path/to/video.mp4"
         assert "target_conversation" in result["inputs"]
         assert "Slack" not in result["inputs"]["target_conversation"]["description"]
 
@@ -572,7 +569,7 @@ class TestGroundStepsInMatchedEvents:
             {"start": 32.978, "end": 35.976, "description": "The user clicked Joel Adams - Please Don't Go and the watch page loads."},
         ]
 
-        matched = _match_events_to_scenes(events, scenes, start_ms, fallback_offset=60.0)
+        matched = _match_events_to_scenes(events, scenes, start_ms)
         starts = [item["scene_start"] for item in matched]
 
         assert starts == [5.996, 8.994, 20.986, 23.984, 26.982, 32.978]

@@ -496,52 +496,56 @@ def _get_clipboard_text():
 
 def _keyboard_loop():
     global _keyboard_buffer
-    prev = {}
-    while not _keyboard_stop.is_set():
-        time.sleep(0.03)
-        if not is_recording:
-            prev.clear()
-            continue
-        shift = _key_pressed(VK_SHIFT)
-        caps = (user32.GetKeyState(VK_CAPITAL) & 0x0001) != 0
-        ctrl = _key_pressed(VK_CONTROL)
-        for vk, ch in _UNSHIFTED_CHARS.items():
-            down = _key_pressed(vk)
-            was = prev.get(vk, False)
-            prev[vk] = down
-            if down and not was:
-                if ctrl:
-                    continue
-                if vk >= 0x41 and vk <= 0x5A:
-                    _keyboard_buffer.append(ch.upper() if (shift or caps) else ch)
-                elif shift:
-                    _keyboard_buffer.append(_SHIFTED_CHARS.get(vk, ch))
-                else:
-                    _keyboard_buffer.append(ch)
-        bk = _key_pressed(VK_BACK)
-        if bk and not prev.get("_bk", False):
-            if _keyboard_buffer:
-                _keyboard_buffer.pop()
-        prev["_bk"] = bk
-        enter = _key_pressed(VK_RETURN)
-        tab = _key_pressed(VK_TAB)
-        enter_edge = enter and not prev.get("_ent", False)
-        tab_edge = tab and not prev.get("_tab", False)
-        if enter_edge or tab_edge:
-            ts = int(time.time() * 1000)
-            buffer_text = "".join(_keyboard_buffer)
-            if _pending_ctrl is not None:
-                _finalize_pending(ts)
-            elif buffer_text.strip():
-                _emit_type_for_last_click(buffer_text, ts)
-            _keyboard_buffer.clear()
-        prev["_ent"] = enter
-        prev["_tab"] = tab
-        if ctrl and _key_pressed(VK_V) and not prev.get("_cv", False):
-            clip = _get_clipboard_text()
-            if clip:
-                _keyboard_buffer.extend(list(clip))
-        prev["_cv"] = _key_pressed(VK_V) if ctrl else False
+    auto.InitializeUIAutomationInCurrentThread()
+    try:
+        prev = {}
+        while not _keyboard_stop.is_set():
+            time.sleep(0.03)
+            if not is_recording:
+                prev.clear()
+                continue
+            shift = _key_pressed(VK_SHIFT)
+            caps = (user32.GetKeyState(VK_CAPITAL) & 0x0001) != 0
+            ctrl = _key_pressed(VK_CONTROL)
+            for vk, ch in _UNSHIFTED_CHARS.items():
+                down = _key_pressed(vk)
+                was = prev.get(vk, False)
+                prev[vk] = down
+                if down and not was:
+                    if ctrl:
+                        continue
+                    if vk >= 0x41 and vk <= 0x5A:
+                        _keyboard_buffer.append(ch.upper() if (shift or caps) else ch)
+                    elif shift:
+                        _keyboard_buffer.append(_SHIFTED_CHARS.get(vk, ch))
+                    else:
+                        _keyboard_buffer.append(ch)
+            bk = _key_pressed(VK_BACK)
+            if bk and not prev.get("_bk", False):
+                if _keyboard_buffer:
+                    _keyboard_buffer.pop()
+            prev["_bk"] = bk
+            enter = _key_pressed(VK_RETURN)
+            tab = _key_pressed(VK_TAB)
+            enter_edge = enter and not prev.get("_ent", False)
+            tab_edge = tab and not prev.get("_tab", False)
+            if enter_edge or tab_edge:
+                ts = int(time.time() * 1000)
+                buffer_text = "".join(_keyboard_buffer)
+                if _pending_ctrl is not None:
+                    _finalize_pending(ts)
+                elif buffer_text.strip():
+                    _emit_type_for_last_click(buffer_text, ts)
+                _keyboard_buffer.clear()
+            prev["_ent"] = enter
+            prev["_tab"] = tab
+            if ctrl and _key_pressed(VK_V) and not prev.get("_cv", False):
+                clip = _get_clipboard_text()
+                if clip:
+                    _keyboard_buffer.extend(list(clip))
+            prev["_cv"] = _key_pressed(VK_V) if ctrl else False
+    finally:
+        auto.UninitializeUIAutomationInCurrentThread()
 
 
 def _emit_type_for_last_click(text, ts):
@@ -563,21 +567,25 @@ def _emit_type_for_last_click(text, ts):
 
 
 def _mouse_loop():
-    was_pressed = False
-    while not _poll_stop.is_set():
-        time.sleep(0.05)
-        if not is_recording:
-            continue
-        is_pressed = _mouse_pressed()
-        if is_pressed and not was_pressed:
-            now = int(time.time() * 1000)
-            pt = POINT()
-            user32.GetCursorPos(ctypes.byref(pt))
-            try:
-                _on_click(pt.x, pt.y, now)
-            except Exception:
-                pass
-        was_pressed = is_pressed
+    auto.InitializeUIAutomationInCurrentThread()
+    try:
+        was_pressed = False
+        while not _poll_stop.is_set():
+            time.sleep(0.05)
+            if not is_recording:
+                continue
+            is_pressed = _mouse_pressed()
+            if is_pressed and not was_pressed:
+                now = int(time.time() * 1000)
+                pt = POINT()
+                user32.GetCursorPos(ctypes.byref(pt))
+                try:
+                    _on_click(pt.x, pt.y, now)
+                except Exception:
+                    pass
+            was_pressed = is_pressed
+    finally:
+        auto.UninitializeUIAutomationInCurrentThread()
 
 
 def _start_input_listeners():
