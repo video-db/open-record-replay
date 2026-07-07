@@ -21,27 +21,13 @@ from registry import save_skill
 from compiler.tool_manifest import surface_tool_guidance, load_tool_manifest
 
 SCENE_INDEX_PROMPT = (
-    "Multiple frames from this time interval are shown. Describe what you see "
-    "in EACH distinct state. If the active browser tab changed across frames "
-    "(check the title bar text for clues), or if a different application appeared, "
-    "describe each state separately -- do not collapse them into a single summary.\n\n"
-    "For each state:\n"
-    "1. What application, website, page, or screen is visible? What browser tab "
-    "is active? Check the title bar and address bar.\n"
-    "2. What text, labels, buttons, fields, data, dropdowns, radio buttons, "
-    "checkboxes, or other UI elements are visible? List everything you can read.\n"
-    "3. If the user is mid-interaction (clicking, typing, selecting), what element "
-    "is being used and what value is being entered or chosen?\n"
-    "4. What has visibly changed from a typical idle state -- progress bars, toasts, "
-    "modals, highlights, selections, checkmarks appearing, new content loading?\n\n"
-    "For example, if one frame shows a video upload page and another frame shows "
-    "a spreadsheet or document editor, describe both separately. Never say "
-    "\"I can't determine what the user is doing\" or \"blank/too dark\" or "
-    "\"upload a clearer screenshot.\" If you can see a window border, a button "
-    "outline, or partial text, describe that.\n\n"
-    "Use generic terms: say 'a file selection dialog' not 'Windows file picker', "
-    "'the browser' not a specific browser name. Do not mention the operating system "
-    "or browser name unless the UI text itself displays it."
+    "Describe what the user is doing on screen at this moment: which element "
+    "they are interacting with (clicking into a field, typing a value, selecting "
+    "an option from a dropdown, choosing a radio button or checkbox, pressing a "
+    "button), what value they are entering or selecting, and any visible changes "
+    "that result from the interaction (e.g., dropdown closes with new value shown, "
+    "radio button becomes selected, checkbox becomes checked, success message "
+    "appears, new page loads)."
 )
 
 
