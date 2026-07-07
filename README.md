@@ -227,7 +227,9 @@ After `SKILL.md` is created, `compile_skill_tool` also installs it into the
 agent's global skills directory, `~/.codex/skills/<name>/SKILL.md` by default,
 and returns `global_skill_md_path` plus an `agent_instruction` reminding the
 agent to verify or report the global install. Agents should ensure this global
-install step has happened so the skill is available in future runs.
+install step has happened so the skill is available in future runs. Set
+`CODEX_HOME` to change the base Codex directory, or set
+`AGENT_GLOBAL_SKILLS_ROOT` to override the global skills directory directly.
 
 ---
 
