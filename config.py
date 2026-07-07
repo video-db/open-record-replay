@@ -9,6 +9,10 @@ load_dotenv(Path(__file__).parent / ".env")
 COLLECTION_NAME = "mcp-record-replay"
 SKILLS_ROOT = Path.home() / ".mcp-videodb" / "skills"
 SESSIONS_ROOT = Path.home() / ".mcp-videodb" / "sessions"
+CODEX_HOME = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+AGENT_GLOBAL_SKILLS_ROOT = Path(
+    os.environ.get("AGENT_GLOBAL_SKILLS_ROOT", CODEX_HOME / "skills")
+)
 SKILLS_ROOT.mkdir(parents=True, exist_ok=True)
 SESSIONS_ROOT.mkdir(parents=True, exist_ok=True)
 

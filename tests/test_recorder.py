@@ -22,6 +22,8 @@ class TestOperatorRecordingGuidance:
         assert any("do not inspect the repo" in item for item in result["operator_instructions"])
         assert any("do not" in item and "drive the browser" in item for item in result["operator_instructions"])
         assert any("compile_skill_tool" in item for item in result["operator_instructions"])
+        assert any("added to the agent globally" in item for item in result["operator_instructions"])
+        assert any("global_skill_md_path" in item for item in result["operator_instructions"])
 
     def test_zero_lead_in_says_begin_now(self):
         result = _operator_recording_guidance(0)

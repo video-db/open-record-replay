@@ -99,7 +99,7 @@ The camera records your screen. The accessibility hooks capture the deterministi
 | `request_capture_permissions_tool` | — | Request microphone and screen capture permissions before recording |
 | `record_skill_tool` | `name: str`, `lead_in_seconds: float = 0.0` | Start a human-in-the-loop workflow recording |
 | `stop_recording_tool` | `trim_end_seconds: float = 0.0` | Stop the active recording and export video to VideoDB |
-| `compile_skill_tool` | `video_id: str`, `name: str` | Compile a recording into `SKILL.json` and `SKILL.md` |
+| `compile_skill_tool` | `video_id: str`, `name: str` | Compile a recording into `SKILL.json` and `SKILL.md`, then install `SKILL.md` globally for future agent use |
 | `list_skills_tool` | — | List all skills generated through this MCP |
 
 ### Resources
@@ -158,7 +158,7 @@ Five tools and two resources will appear. You're ready to record.
 <details>
 <summary><strong>Platform-specific setup</strong></summary>
 
-**macOS** — Requires Screen Recording and Accessibility permissions. Run the smoke test first:
+**macOS** — Requires Screen Recording, Microphone, Accessibility, and Input Monitoring permissions. Run the hook smoke test first:
 
 ```bash
 uv run python scripts/smoke_macos_hook.py --prompt-permissions
@@ -185,6 +185,7 @@ record_skill_tool("my-workflow", lead_in_seconds=5)
     → Operator returns to the MCP client and says "stop"
     → Agent calls stop_recording_tool(trim_end_seconds=10)
     → Agent calls compile_skill_tool(video_id, "my-workflow")
+    → Agent verifies/reports global_skill_md_path for future use
 ```
 
 <details>
@@ -221,6 +222,12 @@ Compiled skills land in `~/.mcp-videodb/skills/<name>/`:
 | `SKILL.vN.json` | Archived previous versions on recompile |
 
 Every generated `SKILL.json` includes an `execution_strategy` — `web_browser`, `desktop_app`, `hybrid`, `terminal`, `file_system`, or `unknown` — so the replaying agent knows which tool path to use. Every `SKILL.md` includes an execution guidance section and a continuous improvement section.
+
+After `SKILL.md` is created, `compile_skill_tool` also installs it into the
+agent's global skills directory, `~/.codex/skills/<name>/SKILL.md` by default,
+and returns `global_skill_md_path` plus an `agent_instruction` reminding the
+agent to verify or report the global install. Agents should ensure this global
+install step has happened so the skill is available in future runs.
 
 ---
 

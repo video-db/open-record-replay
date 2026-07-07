@@ -384,7 +384,7 @@ def _operator_recording_guidance(lead_in_seconds: float) -> dict:
             "After this tool returns, do not inspect the repo, drive the browser, or automate the target app unless the user explicitly asks you to demonstrate the workflow yourself.",
             "Announce that recording has started and when the operator should begin.",
             "Wait for the operator to say stop before calling stop_recording_tool.",
-            "After stopping, compile the skill with compile_skill_tool and set up the generated SKILL.md.",
+            "After stopping, compile the skill with compile_skill_tool. Once SKILL.md is created, ensure it is added to the agent globally for future use; compile_skill_tool installs it globally and returns global_skill_md_path, which you should verify or report.",
         ],
     }
 
