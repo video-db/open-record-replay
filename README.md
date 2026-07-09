@@ -2,7 +2,6 @@
 [![Python][python-shield]][python-url]
 [![MCP][mcp-shield]][mcp-url]
 [![uv][uv-shield]][uv-url]
-[![License][license-shield]][license-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
 [![Website][website-shield]][website-url]
@@ -15,10 +14,10 @@
 <h1 align="center">VideoDB Record & Replay</h1>
 
 <p align="center">
-  Record desktop workflows once. Replay them anywhere.
+  Record desktop workflows once. Compile them into reusable agent skills.
   <br />
   <br />
-  <strong>Record &rarr; Compile &rarr; Replay</strong>
+  <strong>Record &rarr; Compile &rarr; Give the skill to your agent</strong>
 </p>
 
 <p align="center">
@@ -37,13 +36,13 @@
 
 ## What is Record & Replay?
 
-An MCP server that gives AI agents the ability to watch, learn, and replay human desktop workflows. 
+An MCP server that records a human-operated desktop workflow and compiles it into reusable skill files. The generated `SKILL.md` can then be given to an agent so the agent can perform the workflow later.
 
-- **Record** — Captures every click, keystroke, and UI element through native accessibility APIs while simultaneously recording screen video to VideoDB for visual reference.
+- **Record** — Captures native accessibility events, typed values, target metadata, and optional screen video to VideoDB for visual reference.
 - **Compile** — An LLM transforms the event log and scene descriptions into reusable `SKILL.json` and human-readable `SKILL.md` files.
-- **Replay** — Agents play back skills with variable substitution across macOS, Windows, and Linux.
+- **Use** — The server installs the generated `SKILL.md` into the agent's global skills directory, where future agent runs can use the skill instructions, inputs, verification checks, and execution guidance.
 
-Demonstrate a task once on screen, and the server produces a self-contained, versioned, agent-executable skill.
+Demonstrate a task once on screen, and the server produces a self-contained, versioned skill artifact. This repo does not include a replay engine; replay is performed by the agent that consumes the generated skill.
 
 ---
 
@@ -53,7 +52,7 @@ Demonstrate a task once on screen, and the server produces a self-contained, ver
 
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) package manager
-- A [VideoDB](https://console.videodb.io) API key (free)
+- A [VideoDB](https://console.videodb.io) API key
 
 ### 1. Clone and install
 
@@ -141,7 +140,7 @@ Discards events at the tail of the recording. Use when the operator must switch 
 <details>
 <summary><strong>Events-only mode</strong></summary>
 
-If VideoDB screen capture is unavailable, the system falls back to recording AX events only. Call `compile_skill_tool` with `video_id=""` or `video_id="none"` to compile from events alone.
+If VideoDB screen capture is unavailable, the system falls back to recording native accessibility events only. Call `compile_skill_tool` with `video_id=""` or `video_id="none"` to compile from events alone.
 
 </details>
 
@@ -151,29 +150,29 @@ If VideoDB screen capture is unavailable, the system falls back to recording AX 
 
 ```
 Human performs workflow
-        │
-        ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  AX hooks ──► events.jsonl      (deterministic action log)       │
-│  Capture SDK ──► video_id       (visual reference)               │
-└──────────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  Compiler (LLM)                                                  │
-│  events.jsonl + matched scene descriptions ──► SKILL.json        │
-│  SKILL.json ──► SKILL.md        (agent-readable)                 │
-└──────────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  Replay                                                          │
-│  Read SKILL.json → substitute {{variables}} → native execution  │
-│  Self-healing: AX re-lookup → frame delta → semantic search      │
-└──────────────────────────────────────────────────────────────────┘
+        |
+        v
++------------------------------------------------------------------+
+| Native AX/UIA/AT-SPI hooks -> events.jsonl                       |
+| VideoDB Capture SDK -> video_id, when capture succeeds           |
++------------------------------------------------------------------+
+        |
+        v
++------------------------------------------------------------------+
+| Compiler                                                         |
+| events.jsonl + optional scene summaries/transcript -> SKILL.json |
+| SKILL.json -> SKILL.md                                           |
++------------------------------------------------------------------+
+        |
+        v
++------------------------------------------------------------------+
+| Agent skill install                                              |
+| ~/.mcp-videodb/skills/<name>/SKILL.md                            |
+| ~/.codex/skills/<name>/SKILL.md, unless overridden               |
++------------------------------------------------------------------+
 ```
 
-The camera records your screen. The accessibility hooks capture the deterministic truth. Together, they produce skills that are both precise and visually verifiable.
+The accessibility hooks provide the action log. VideoDB scene indexing adds visual context when screen capture is available. The compiler combines those signals into skill files that a future agent can use to perform the workflow.
 
 ---
 
@@ -181,13 +180,12 @@ The camera records your screen. The accessibility hooks capture the deterministi
 
 | Feature | Description |
 |---------|-------------|
-| **Dual recording** | Captures deterministic AX events + screen video simultaneously for precision and auditability |
-| **LLM compilation** | VideoDB's VLM generates structured SKILL.json from event logs and scene descriptions |
+| **Dual recording** | Captures native accessibility events and, when full capture is available, screen video for visual reference |
+| **LLM compilation** | VideoDB scene indexing and `generate_text` compile event logs, scene descriptions, and transcript text into structured `SKILL.json` |
 | **Graceful degradation** | Falls back to events-only recording when screen capture is unavailable |
 | **Cross-platform** | Native accessibility hooks for Windows (UIA), macOS (AX), and Linux (AT-SPI) |
 | **Skill versioning** | Auto-increments on recompile; archives old versions as `SKILL.vN.json` |
-| **Variable templating** | Detects search queries, dates, dropdown choices, and other reusable inputs |
-| **Visual self-healing** | Stores scene descriptions alongside each step for future visual re-lookup |
+| **Variable templating** | Prompts the compiler to turn recorded literals such as search queries, dates, dropdown choices, and file paths into reusable inputs |
 | **Human-in-the-loop** | Recording is operator-driven, not agent-driven — the human demonstrates, the AI learns |
 
 ---
@@ -198,7 +196,7 @@ The camera records your screen. The accessibility hooks capture the deterministi
 |------|-----------|-------------|
 | `request_capture_permissions_tool` | — | Request microphone and screen capture permissions before recording |
 | `record_skill_tool` | `name: str`, `lead_in_seconds: float = 0.0` | Start a human-in-the-loop workflow recording |
-| `stop_recording_tool` | `trim_end_seconds: float = 0.0` | Stop the active recording and export video to VideoDB |
+| `stop_recording_tool` | `trim_end_seconds: float = 0.0` | Stop the active recording and export video to VideoDB when capture is available |
 | `compile_skill_tool` | `video_id: str`, `name: str` | Compile a recording into `SKILL.json` and `SKILL.md`, then install `SKILL.md` globally for future agent use |
 | `list_skills_tool` | — | List all skills generated through this MCP |
 
@@ -217,11 +215,11 @@ Compiled skills land in `~/.mcp-videodb/skills/<name>/`:
 
 | File | Purpose |
 |------|---------|
-| `SKILL.json` | Structured skill definition with steps, inputs, verification, execution strategy |
+| `SKILL.json` | Structured skill definition with steps, inputs, verification checks, recorded surface data, and execution strategy |
 | `SKILL.md` | Human and agent-readable markdown following the agentskills.io standard |
 | `SKILL.vN.json` | Archived previous versions on recompile |
 
-Every generated `SKILL.json` includes an `execution_strategy` — `web_browser`, `desktop_app`, `hybrid`, `terminal`, `file_system`, or `unknown` — so the replaying agent knows which tool path to use. Every `SKILL.md` includes an execution guidance section and a continuous improvement section.
+Every generated `SKILL.json` includes an `execution_strategy` — `web_browser`, `desktop_app`, `hybrid`, `terminal`, `file_system`, or `unknown` — so the agent consuming the skill knows which tool path to prefer. Every `SKILL.md` includes execution guidance, continuous improvement guidance, and agent tool-priority guidance.
 
 After `SKILL.md` is created, `compile_skill_tool` also installs it into the
 agent's global skills directory, `~/.codex/skills/<name>/SKILL.md` by default,
@@ -243,8 +241,8 @@ open-record-replay/
 ├── registry.py               # Skill CRUD + versioning
 │
 ├── capture/
-│   ├── recorder.py           # Records AX events + VideoDB capture simultaneously
-│   ├── ax_client.py          # JSONL IPC wrapper for native AX companion
+│   ├── recorder.py           # Records native accessibility events + optional VideoDB capture
+│   ├── ax_client.py          # JSONL IPC wrapper for native accessibility companion
 │   ├── capture_client.py     # VideoDB Capture SDK wrapper
 │   └── native/
 │       ├── ax_hook_win32.py   # Windows: UI Automation + keyboard polling + TCP IPC
@@ -284,7 +282,7 @@ open-record-replay/
 
 - Ensure the recording has meaningful UI interactions (not just idle time)
 - Try events-only compilation (`video_id=""`) if video indexing is slow
-- The LLM may need a retry — compilation automatically retries up to 2 times
+- The LLM may need another generation attempt — the compiler is configured for up to 2 attempts
 
 </details>
 
@@ -327,8 +325,6 @@ If `ready_for_event_recording` is false, manually enable the terminal in **Syste
 [mcp-url]: https://modelcontextprotocol.io/
 [uv-shield]: https://img.shields.io/badge/uv-package_manager-DE5FE2?style=for-the-badge&logo=astral&logoColor=white
 [uv-url]: https://docs.astral.sh/uv/
-[license-shield]: https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge
-[license-url]: https://opensource.org/licenses/MIT
 [stars-shield]: https://img.shields.io/github/stars/video-db/open-record-replay.svg?style=for-the-badge
 [stars-url]: https://github.com/video-db/open-record-replay/stargazers
 [issues-shield]: https://img.shields.io/github/issues/video-db/open-record-replay.svg?style=for-the-badge
