@@ -278,22 +278,6 @@ open-record-replay/
 
 ---
 
-## Development
-
-### Run tests
-
-```bash
-uv run pytest
-```
-
-Tests use `pytest` with `pytest-asyncio` (`asyncio_mode = "auto"`). All VideoDB API calls are mocked.
-
-### Notebook
-
-A Jupyter notebook (`notebook.ipynb`) provides a step-by-step walkthrough of the full record→compile pipeline, useful for understanding the flow without setting up an MCP client.
-
----
-
 ## Troubleshooting
 
 <details>
