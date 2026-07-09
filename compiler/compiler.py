@@ -40,18 +40,18 @@ SCENE_INDEX_PROMPT = (
     "If a spreadsheet or table is visible, summarize only relevant headers, the "
     "active/selected row, and values likely copied into the workflow. Do not list "
     "all rows. If a page contains unrelated feed items, recommendations, sidebars, "
-    "legal disclaimers, decorative text, or browser/OS chrome, omit them unless "
+    "legal disclaimers, decorative text, or browser/OS window controls, omit them unless "
     "the user interacts with them. If multiple frames show the same state, "
     "summarize it once.\n\n"
     "If the active tab, page, dialog, or application changes across frames, "
     "describe each state separately in chronological order. Never say "
     "\"I can't determine what the user is doing\", \"blank/too dark\", or "
     "\"upload a clearer screenshot\"; describe any visible partial UI instead.\n\n"
-    "Use generic platform-neutral terms: say 'a file selection dialog' not "
-    "'Windows file picker', and 'the browser' not a specific browser name. Do "
-    "not mention the operating system or browser name unless the UI text itself "
-    "displays it. Output plain text only, with concise bullets only when listing "
-    "options or fields is necessary."
+    "Preserve exact visible app, browser, website, product, and operating-system "
+    "names when they are readable or known from the UI, such as Brave Browser, "
+    "Google Chrome, Safari, YouTube Studio, Finder, or Windows Explorer. Do not "
+    "invent names that are not visible. Output plain text only, with concise "
+    "bullets only when listing options or fields is necessary."
 )
 
 
@@ -1312,7 +1312,7 @@ def _normalize_required_tools(tools) -> list[dict]:
     if not isinstance(tools, list):
         return _default_required_tools()
     valid_names = {
-        "browser_automation", "visual_automation", "shell_execution",
+        "browser-use", "chrome-use", "browser_automation", "visual_automation", "shell_execution",
         "file_system_access", "keyboard_input", "ui_element_inspection",
         "video_reference",
     }
@@ -1321,6 +1321,8 @@ def _normalize_required_tools(tools) -> list[dict]:
         if not isinstance(entry, dict):
             continue
         name = str(entry.get("name", "")).strip().lower().replace(" ", "_")
+        if name == "browser_automation":
+            name = "browser-use"
         reason = str(entry.get("reason", "")).strip()
         if not name or not reason:
             continue

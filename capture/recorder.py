@@ -333,10 +333,13 @@ async def _handle_ax_event(event: dict):
         target = event.get("target", {})
         if isinstance(target, dict):
             fg_window = str(target.get("foreground_window") or "").strip()
-        event["surface"] = {
-            "platform": sys.platform,
-            "window_title": fg_window,
-        }
+        surface = event.get("surface")
+        if not isinstance(surface, dict):
+            surface = {}
+        surface.setdefault("platform", sys.platform)
+        if fg_window and not surface.get("window_title"):
+            surface["window_title"] = fg_window
+        event["surface"] = surface
     with open(state.events_path, "a") as f:
         f.write(json.dumps(event) + "\n")
 

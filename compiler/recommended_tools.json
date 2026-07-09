@@ -1,6 +1,16 @@
 {
   "version": 1,
   "tools": {
+    "browser-use": {
+      "display_name": "browser-use",
+      "recommended_setup": true,
+      "use_when": "Browser workflows where the agent can use the same browser app, account, profile, and page state described by the skill."
+    },
+    "chrome-use": {
+      "display_name": "chrome-use",
+      "recommended_setup": true,
+      "use_when": "Codex browser-control plugin for connecting to the user's existing Chromium-family browser session/profile when available."
+    },
     "native_accessibility": {
       "display_name": "Native accessibility controls",
       "recommended_setup": true,
@@ -30,11 +40,11 @@
   },
   "surfaces": {
     "web_browser": {
-      "preferred_tools": ["browser_automation", "keyboard_input"],
-      "fallback_tools": ["visual_automation"],
+      "preferred_tools": ["browser-use", "chrome-use"],
+      "fallback_tools": [],
       "guidance": [
-        "Use browser DOM automation (click, type, setFiles) for page interactions. Prefer DOM file chooser injection (setFiles) when available.",
-        "Fall back to native OS file picker automation only when the browser blocks DOM file injection.",
+        "For browser workflows, first look for browser-use or chrome-use and connect it to the existing browser app/profile/session.",
+        "If browser-use/chrome-use is unavailable or cannot connect to the existing browser session, stop and ask the user to enable/connect it. Do not substitute Playwright, a fresh browser profile, or an isolated automation browser.",
         "Match elements by accessible name, placeholder, label text, and role before using coordinate-based fallbacks."
       ]
     },

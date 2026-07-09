@@ -112,8 +112,30 @@ class TestNormalizeLlmOutput:
             "evidence": "The recording shows YouTube Studio.",
         }
         assert result["execution_strategy"]["surface"] == "web_browser"
-        assert result["execution_strategy"]["preferred_tools"] == ["browser_automation", "keyboard_input"]
-        assert result["execution_strategy"]["fallback_tools"] == ["visual_automation"]
+        assert result["execution_strategy"]["preferred_tools"] == ["browser-use", "chrome-use"]
+        assert result["execution_strategy"]["fallback_tools"] == []
+
+    def test_browser_required_tool_alias_normalizes_to_browser_use(self):
+        raw = {
+            "required_tools": [
+                {"name": "browser_automation", "reason": "Operate browser pages.", "kind": "recommended"},
+                {"name": "chrome-use", "reason": "Connect to the existing browser session.", "kind": "fallback"},
+                {"name": "keyboard_input", "reason": "Type values into fields.", "kind": "recommended"},
+                {"name": "visual_automation", "reason": "Fallback for visible controls.", "kind": "fallback"},
+                {"name": "file_system_access", "reason": "Select local files.", "kind": "optional"},
+            ],
+            "steps": [],
+        }
+
+        result = _normalize_llm_output(raw, "test")
+
+        assert result["required_tools"] == [
+            {"name": "browser-use", "reason": "Operate browser pages.", "kind": "recommended"},
+            {"name": "chrome-use", "reason": "Connect to the existing browser session.", "kind": "fallback"},
+            {"name": "keyboard_input", "reason": "Type values into fields.", "kind": "recommended"},
+            {"name": "visual_automation", "reason": "Fallback for visible controls.", "kind": "fallback"},
+            {"name": "file_system_access", "reason": "Select local files.", "kind": "optional"},
+        ]
 
     def test_infers_desktop_execution_strategy(self):
         raw = {

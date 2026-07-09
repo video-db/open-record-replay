@@ -180,26 +180,31 @@ inputs over recorded literals.
 - Preserve fixed UI labels such as "Upload from your computer" as enum options or step
   instructions, not as hardcoded destination/file inputs.
 
-## Platform Neutrality
-The skill must be reusable across operating systems and browsers. NEVER bake in
-platform-specific details:
+## Factual Surface Names
+The skill should preserve factual app, browser, website, OS, and window names
+from the recording because authenticated sessions often exist only in that exact
+surface.
 
-- NEVER mention OS names (macOS, Windows, Linux, darwin, win32) in any field.
-  Use "the operating system" or describe the UI generically.
-- NEVER hardcode browser names (Chrome, Brave, Safari, Firefox, Edge). Use "the
-  browser" or "a web browser".
-- NEVER mention OS-specific keyboard shortcuts (Cmd+Shift+G, Ctrl+O, Alt+Tab).
-  Describe the intended action instead ("navigate to the folder", "open the file").
+- Preserve visible or captured browser/app names such as Chrome, Brave, Safari,
+  Firefox, Edge, YouTube Studio, Finder, Terminal, Slack, or VS Code when they
+  appear in scene descriptions, foreground_window, start_context, or recorded_surface.
+- Preserve factual OS/platform names when captured, such as macOS, Windows,
+  Linux, darwin, or win32. Do not invent names that are not present in the
+  recording.
+- For browser workflows, make it clear that the replaying agent should use the
+  same browser app/profile/session that was recorded or currently active.
+- Mention OS-specific keyboard shortcuts only when they are visible or necessary
+  for replay. Otherwise describe the intended action.
 - NEVER hardcode local file paths (/Users/..., C:\\Users\\..., ~/...). Always
   template them as named {{inputs}} like {{file_path}}, {{video_file_path}}, etc.
 - Describe UI elements by their visible label text, position (top-right, center,
-  bottom-left), and purpose — not by what platform they appear on.
-- For file picker interactions: describe it as "the file selection dialog", not
-  "macOS file picker" or "Windows file explorer".
-- The `start_context` label should describe the application page or state (e.g.,
-  "YouTube Studio upload page"), not "Brave Browser" or "Chrome on Windows".
+  bottom-left), and purpose.
+- For file picker interactions, preserve the exact app/dialog name if visible
+  or captured. Otherwise use "the file selection dialog".
+- The `start_context` label may include the exact browser/app when factual, e.g.,
+  "YouTube Studio in Brave Browser".
 - The `recorded_surface` field, if present, must only contain factual data from
-  the recording — do not invent OS or browser names.
+  the recording.
 
 ## Task-Level Understanding
 Before writing steps, look at the FULL event sequence AND scene descriptions to infer:
@@ -260,8 +265,9 @@ visible screen state in instructions. Do not invent a URL, app name, or path.
 
 Analyze the recording to determine what capabilities an agent needs to execute
 this skill. Describe WHAT the agent must be able to DO — not which specific
-tool or MCP to use. The agent will map these capabilities to the tools it has
-available. Output a "required_tools" array on the root object. Each entry is:
+tool or MCP to use, except browser workflows should use direct `browser-use`
+or `chrome-use` tool names. Output a "required_tools" array on the root object.
+Each entry is:
 
 {
   "name": "capability_name",
@@ -276,18 +282,21 @@ specific tool. The agent decides which of its tools can fulfill each capability.
 
 | Evidence in recording                               | recommended capability     | fallback capability       |
 |-----------------------------------------------------|----------------------------|---------------------------|
-| Browser scenes, web URLs, start_context=web         | browser_automation         | visual_automation         |
+| Browser scenes, web URLs, start_context=web         | browser-use                | chrome-use                |
 | Desktop app, no browser, start_context=desktop_app  | visual_automation          | ui_element_inspection     |
 | Terminal/CLI visible, start_context=terminal        | shell_execution            | visual_automation         |
 | File manager, save/open dialogs, start_context=file | file_system_access         | visual_automation         |
-| Mixed surfaces (web + desktop + terminal)           | visual_automation          | browser_automation        |
+| Mixed surfaces (web + desktop + terminal)           | visual_automation          | browser-use               |
 | Typing into a visible text editor or form           | keyboard_input             | visual_automation         |
-| Clicking OS chrome (taskbar, start menu, system tray) | shell_execution          | visual_automation         |
+| Clicking screen-edge OS controls (taskbar, title bar, system tray) | shell_execution | visual_automation |
 
 ### Capability Definitions
 
-- **browser_automation** — Click, type, and navigate within a web browser using
-  DOM element selectors or page structure. Works on any website.
+- **browser-use** — Use the agent's built-in browser-use capability to click,
+  type, and navigate within the recorded browser app/profile/page state.
+- **chrome-use** — Use the Codex chrome-use/browser-control plugin when it can
+  connect to the user's existing browser app/profile/session. Do not use it to
+  create a fresh blank profile.
 - **visual_automation** — Take screenshots, identify elements visually (by
   color, position, label text), click at coordinates, type text. Works on any
   visible UI surface (desktop apps, web, dialogs).

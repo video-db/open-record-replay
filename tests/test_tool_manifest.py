@@ -14,9 +14,11 @@ def test_loads_default_tool_manifest():
     manifest = load_tool_manifest()
 
     assert manifest["version"] == 1
+    assert "browser-use" in manifest["tools"]
+    assert "chrome-use" in manifest["tools"]
     assert "native_accessibility" in manifest["tools"]
-    assert manifest["surfaces"]["web_browser"]["preferred_tools"] == ["native_accessibility"]
-    assert manifest["surfaces"]["web_browser"]["fallback_tools"] == ["visual_computer_use"]
+    assert manifest["surfaces"]["web_browser"]["preferred_tools"] == ["browser-use", "chrome-use"]
+    assert manifest["surfaces"]["web_browser"]["fallback_tools"] == []
     assert manifest["surfaces"]["desktop_app"]["preferred_tools"] == ["native_accessibility"]
     assert manifest["surfaces"]["hybrid"]["fallback_tools"] == ["visual_computer_use"]
 

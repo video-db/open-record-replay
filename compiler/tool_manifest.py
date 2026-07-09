@@ -11,6 +11,16 @@ MANIFEST_PATH = Path(__file__).with_name("recommended_tools.json")
 FALLBACK_MANIFEST = {
     "version": 1,
     "tools": {
+        "browser-use": {
+            "display_name": "browser-use",
+            "recommended_setup": True,
+            "use_when": "Browser workflows where the agent can use the same browser app, account, profile, and page state described by the skill.",
+        },
+        "chrome-use": {
+            "display_name": "chrome-use",
+            "recommended_setup": True,
+            "use_when": "Codex browser-control plugin for connecting to the user's existing Chromium-family browser session/profile when available.",
+        },
         "native_accessibility": {
             "display_name": "Native accessibility controls",
             "recommended_setup": True,
@@ -29,9 +39,12 @@ FALLBACK_MANIFEST = {
     },
     "surfaces": {
         "web_browser": {
-            "preferred_tools": ["native_accessibility"],
-            "fallback_tools": ["visual_computer_use"],
-            "guidance": ["Replay the recorded visible browser app directly with native desktop automation."],
+            "preferred_tools": ["browser-use", "chrome-use"],
+            "fallback_tools": [],
+            "guidance": [
+                "For browser workflows, first look for browser-use or chrome-use and connect it to the existing browser app/profile/session.",
+                "If browser-use/chrome-use is unavailable or cannot connect to the existing browser session, stop and ask the user to enable/connect it. Do not substitute Playwright, a fresh browser profile, or an isolated automation browser.",
+            ],
         },
         "desktop_app": {
             "preferred_tools": ["native_accessibility"],

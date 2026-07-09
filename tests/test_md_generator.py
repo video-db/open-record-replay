@@ -1,6 +1,7 @@
 """Tests for compiler/md_generator.py."""
 
 from compiler.md_generator import (
+    _append_agent_tool_priority_section,
     _append_execution_guidance_section,
     _append_self_improvement_section,
     _recorded_surface_summary,
@@ -54,15 +55,38 @@ def test_template_fallback_includes_self_improvement_section():
 
     assert "## Continuous Improvement" in result
     assert "Keep edits concise" in result
+    assert "## Agent Tool Priority" in result
+
+
+def test_appends_agent_tool_priority_section():
+    result = _append_agent_tool_priority_section("# Example")
+
+    assert "## Agent Tool Priority" in result
+    assert "`browser-use` or `chrome-use`" in result
+    assert "stop and ask the user" in result
+    assert "Playwright" in result
+
+
+def test_does_not_duplicate_agent_tool_priority_section():
+    content = """# Example
+
+## Agent Tool Priority
+- Existing guidance.
+"""
+
+    result = _append_agent_tool_priority_section(content)
+
+    assert result.count("## Agent Tool Priority") == 1
+    assert "Existing guidance." in result
 
 
 def test_appends_browser_execution_guidance():
     skill = {
         "execution_strategy": {
             "surface": "web_browser",
-            "preferred_tools": ["native_accessibility"],
-            "fallback_tools": ["visual_computer_use"],
-            "notes": ["Replay the recorded visible browser app directly with native desktop automation."],
+            "preferred_tools": ["browser-use", "chrome-use"],
+            "fallback_tools": [],
+            "notes": ["For browser workflows, first look for browser-use or chrome-use."],
         }
     }
 
@@ -70,14 +94,13 @@ def test_appends_browser_execution_guidance():
 
     assert "## Execution Guidance" in result
     assert "Surface: `web_browser`" in result
-    assert "Preferred tool path: `native_accessibility`" in result
-    assert "Fallback tool path: `visual_computer_use`" in result
-    assert "recorded visible browser app" in result
+    assert "Preferred tool path: `browser-use`, `chrome-use`" in result
+    assert "Fallback tool path" not in result
+    assert "browser-use or chrome-use" in result
     assert "Do not use any separate browser automation session" not in result
     assert "Before upload/send/post/delete actions" in result
     assert "Do not repeat them unless" in result
-    assert "Preferred setup before replay: Native accessibility controls." in result
-    assert "Fallback setup before replay: Visual computer-use." in result
+    assert "Preferred setup before replay: browser-use, chrome-use." in result
 
 
 def test_appends_desktop_platform_execution_guidance():

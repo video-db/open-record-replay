@@ -81,10 +81,11 @@ required_tools:
 - The `description` frontmatter field should be 1-3 sentences. Front-load the key use
   case. Include keywords the agent can use for implicit invocation.
 - Emit `required_tools` from the skill definition as structured YAML in the frontmatter.
-  Group by kind: recommended, fallback, optional. Each entry is the capability name followed
-  by the reason in parentheses on the same line. The capability names describe a class of
-  functionality (browser_automation, visual_automation, shell_execution, etc.) — not specific
-  tools. The agent maps them to whatever tools it has available.
+  Group by kind: recommended, fallback, optional. Copy tool names exactly from
+  the skill definition; do not rename them or invent alternatives. Browser
+  workflows use `browser-use` or `chrome-use`, never `browser_automation`.
+  Generic non-browser capabilities such as `keyboard_input`, `visual_automation`,
+  and `file_system_access` may remain as-is when present in the skill definition.
 - In the body, add a "## Required Capabilities" section after the title that lists each
   capability with its kind and why it is needed for this specific workflow.
 - Keep the skill under 500 lines. Be concise but thorough.
@@ -120,6 +121,7 @@ async def generate_skill_md(skill: dict) -> str:
         content = _replace_inputs_section(content, skill)
         content = _append_execution_guidance_section(content, skill)
         content = _append_self_improvement_section(content)
+        content = _append_agent_tool_priority_section(content)
         return content
     except Exception as e:
         logger.warning(f"VLM MD generation failed, using template fallback: {e}")
@@ -231,7 +233,7 @@ def _validate_and_clean_md(content: str, skill: dict) -> str:
     content = re.sub(r'\(no scene match\)', '', content, flags=re.IGNORECASE)
     content = re.sub(r'\n{3,}', '\n\n', content)
     content = _strip_dark_frame_boilerplate(content)
-    content = _strip_platform_specifics(content)
+    content = _strip_local_paths(content)
     return content.strip() + "\n"
 
 
@@ -323,16 +325,7 @@ def _strip_dark_frame_boilerplate(content: str) -> str:
     return content
 
 
-def _strip_platform_specifics(content: str) -> str:
-    patterns = [
-        (r'\b(macOS|Mac OS|OS X|darwin)\b', 'the operating system'),
-        (r'\b(Brave Browser|Brave)\b', 'the browser'),
-        (r'\bCmd\+Shift\+G\b', 'the path navigation shortcut'),
-        (r'\bCmd\+O\b', 'the open shortcut'),
-        (r'\bCtrl\+O\b', 'the open shortcut'),
-    ]
-    for pattern, replacement in patterns:
-        content = re.sub(pattern, replacement, content, flags=re.IGNORECASE)
+def _strip_local_paths(content: str) -> str:
     content = re.sub(
         r'(?:/(?:Users|home|mnt)/[^\s,;:()]*)+(?:\.\w+)?',
         lambda m: m.group(0) if '{{' in m.group(0) else 'the local file path',
@@ -406,6 +399,21 @@ def _append_self_improvement_section(content: str) -> str:
     if re.search(r"^## Continuous Improvement\s*$", cleaned, flags=re.MULTILINE):
         return cleaned + "\n"
     return f"{cleaned}\n\n{SELF_IMPROVEMENT_SECTION}"
+
+
+AGENT_TOOL_PRIORITY_SECTION = """## Agent Tool Priority
+- For browser workflows, first look for an available `browser-use` or `chrome-use` plugin/tool and connect it to the existing browser app, account, profile, and window described by this skill.
+- If `browser-use`/`chrome-use` is not available or is not connected to the existing browser session, stop and ask the user to enable or connect it. Do not silently choose another browser tool.
+- Do not use Playwright, Puppeteer, Selenium, headless browsers, isolated browser contexts, or fresh browser profiles unless the user explicitly asks for that.
+- Use built-in `computer-use` only for desktop or mixed workflows, or for visible OS/file-picker steps after the correct browser session is already preserved.
+"""
+
+
+def _append_agent_tool_priority_section(content: str) -> str:
+    cleaned = content.strip()
+    if re.search(r"^## Agent Tool Priority\s*$", cleaned, flags=re.MULTILINE):
+        return cleaned + "\n"
+    return f"{cleaned}\n\n{AGENT_TOOL_PRIORITY_SECTION}"
 
 
 def _template_fallback(skill: dict) -> str:
@@ -522,6 +530,7 @@ def _template_fallback(skill: dict) -> str:
     content = _append_self_improvement_section(
         _append_execution_guidance_section("\n".join(lines), skill)
     )
+    content = _append_agent_tool_priority_section(content)
     return _validate_and_clean_md(content, skill)
 
 

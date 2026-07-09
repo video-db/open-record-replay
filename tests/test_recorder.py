@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -137,7 +138,7 @@ class TestHandleAxEvent:
 
             lines = events_path.read_text().strip().split("\n")
             written = json.loads(lines[0])
-            assert written["surface"]["platform"] == "win32"
+            assert written["surface"]["platform"] == sys.platform
             assert written["surface"]["window_title"] == "YouTube Studio - Chrome"
         finally:
             state.events_path = old_events_path
@@ -158,8 +159,39 @@ class TestHandleAxEvent:
 
             lines = events_path.read_text().strip().split("\n")
             written = json.loads(lines[0])
-            assert written["surface"]["platform"] == "win32"
-            assert written["surface"]["window_title"] == ""
+            assert written["surface"]["platform"] == sys.platform
+            assert "window_title" not in written["surface"]
+        finally:
+            state.events_path = old_events_path
+
+    def test_preserves_existing_surface_app_details(self, tmp_path):
+        events_path = tmp_path / "events.jsonl"
+        from state import state
+        old_events_path = state.events_path
+        state.events_path = str(events_path)
+        try:
+            event = {
+                "event": "action",
+                "ts": 1000,
+                "action": "click",
+                "surface": {
+                    "platform": "darwin",
+                    "app_name": "Brave Browser",
+                    "window_title": "Channel content - YouTube Studio",
+                },
+                "target": {
+                    "type": "AXButton",
+                    "label": "Create",
+                    "foreground_window": "Fallback title",
+                },
+            }
+            asyncio.run(_handle_ax_event(event))
+
+            lines = events_path.read_text().strip().split("\n")
+            written = json.loads(lines[0])
+            assert written["surface"]["platform"] == "darwin"
+            assert written["surface"]["app_name"] == "Brave Browser"
+            assert written["surface"]["window_title"] == "Channel content - YouTube Studio"
         finally:
             state.events_path = old_events_path
 
