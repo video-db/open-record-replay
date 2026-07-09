@@ -94,7 +94,7 @@ Five tools and two resources will appear. You're ready to record.
 <details>
 <summary><strong>Platform-specific setup</strong></summary>
 
-**macOS** — Requires Screen Recording, Microphone, Accessibility, and Input Monitoring permissions. Run the hook smoke test first:
+**macOS** — Requires Screen Recording, Microphone, Accessibility, and Input Monitoring permissions. Run the permission helper first:
 
 ```bash
 uv run python scripts/smoke_macos_hook.py --prompt-permissions
@@ -262,18 +262,7 @@ open-record-replay/
 │   └── skill.schema.json     # JSON Schema (draft-07) for SKILL.json validation
 │
 ├── scripts/
-│   ├── smoke_macos_hook.py   # macOS AX hook smoke test
-│   └── test_native_desktop.py  # Windows desktop recorder and inspector (standalone)
-│
-└── tests/
-    ├── conftest.py
-    ├── test_recorder.py
-    ├── test_compiler.py
-    ├── test_ax_client.py
-    ├── test_ax_hook_win32.py
-    ├── test_ax_hook_darwin.py
-    ├── test_md_generator.py
-    └── test_tool_manifest.py
+│   └── smoke_macos_hook.py   # macOS AX hook permission helper
 ```
 
 ---
@@ -315,7 +304,6 @@ If `ready_for_event_recording` is false, manually enable the terminal in **Syste
 <summary><strong>Windows: no keyboard events recorded</strong></summary>
 
 - Ensure the app being recorded has UI Automation support (most modern apps do)
-- Run `uv run python scripts/test_native_desktop.py` to verify UIA data quality
 
 </details>
 
