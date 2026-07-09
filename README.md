@@ -9,7 +9,7 @@
 
 <br />
 <p align="center">
-  <a href="https://videodb.io/"><img src="https://videodb.io/assets/logos/wordmark-dark.png" alt="VideoDB" height="72"></a>
+  <a href="https://videodb.io/"><img src="assets/videodb-logo.png" alt="VideoDB" height="72"></a>
 </p>
 
 <h1 align="center">VideoDB Record & Replay</h1>
@@ -30,7 +30,7 @@
   ·
   <a href="https://docs.videodb.io"><strong>Docs</strong></a>
   ·
-  <a href="https://github.com/video-db/open-record-reply/issues">Report Bug</a>
+  <a href="https://github.com/video-db/open-record-replay/issues">Report Bug</a>
 </p>
 
 ---
@@ -44,6 +44,106 @@ An MCP server that gives AI agents the ability to watch, learn, and replay human
 - **Replay** — Agents play back skills with variable substitution across macOS, Windows, and Linux.
 
 Demonstrate a task once on screen, and the server produces a self-contained, versioned, agent-executable skill.
+
+---
+
+## Installation
+
+### Prerequisites
+
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/) package manager
+- A [VideoDB](https://console.videodb.io) API key (free)
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/video-db/open-record-replay.git
+cd open-record-replay
+uv sync
+```
+
+### 2. Set your API key
+
+Create a `.env` file in the project root:
+
+```env
+VIDEODB_API_KEY=sk-your_api_key_here
+```
+
+### 3. Configure your MCP client
+
+Add to your MCP config (`claude_desktop_config.json`, VS Code MCP settings, etc.):
+
+```json
+{
+  "mcpServers": {
+    "videodb-record-replay": {
+      "command": "uv",
+      "args": ["run", "python", "server.py"],
+      "cwd": "/path/to/open-record-replay"
+    }
+  }
+}
+```
+
+### 4. Restart your client
+
+Five tools and two resources will appear. You're ready to record.
+
+<details>
+<summary><strong>Platform-specific setup</strong></summary>
+
+**macOS** — Requires Screen Recording, Microphone, Accessibility, and Input Monitoring permissions. Run the hook smoke test first:
+
+```bash
+uv run python scripts/smoke_macos_hook.py --prompt-permissions
+```
+
+If `ready_for_event_recording` is false, enable the terminal process in **System Settings > Privacy & Security > Accessibility** and **Input Monitoring**, then rerun.
+
+**Windows** — Uses UI Automation. No additional setup required beyond the standard install.
+
+**Linux** — Uses AT-SPI. Ensure `at-spi2-core` is installed and your desktop environment has accessibility enabled.
+
+</details>
+
+---
+
+## Usage
+
+Recording is human-in-the-loop. The agent starts recording, announces that recording is active, then waits. The human operator performs the UI workflow being captured.
+
+```
+record_skill_tool("my-workflow", lead_in_seconds=5)
+    → Agent tells the operator recording is active
+    → Operator switches to the target app and performs the workflow
+    → Operator returns to the MCP client and says "stop"
+    → Agent calls stop_recording_tool(trim_end_seconds=10)
+    → Agent calls compile_skill_tool(video_id, "my-workflow")
+    → Agent verifies/reports global_skill_md_path for future use
+```
+
+<details>
+<summary><strong>lead_in_seconds</strong></summary>
+
+The recorder starts capture immediately, then the compiler ignores events before the effective workflow start. With `lead_in_seconds=5`, the operator can switch from the MCP client to the target app and should begin the demonstrated workflow after 5 seconds.
+
+</details>
+
+<details>
+<summary><strong>trim_end_seconds</strong></summary>
+
+Discards events at the tail of the recording. Use when the operator must switch back to the MCP client to say "stop". For example, `trim_end_seconds=10` ignores the final 10 seconds so the generated skill does not include the operator returning to the terminal or chat window.
+
+</details>
+
+<details>
+<summary><strong>Events-only mode</strong></summary>
+
+If VideoDB screen capture is unavailable, the system falls back to recording AX events only. Call `compile_skill_tool` with `video_id=""` or `video_id="none"` to compile from events alone.
+
+</details>
 
 ---
 
@@ -111,106 +211,6 @@ The camera records your screen. The accessibility hooks capture the deterministi
 
 ---
 
-## Installation
-
-### Prerequisites
-
-- Python 3.10+
-- [uv](https://docs.astral.sh/uv/) package manager
-- A [VideoDB](https://console.videodb.io) API key (free)
-
-### 1. Clone and install
-
-```bash
-git clone https://github.com/video-db/open-record-reply.git
-cd open-record-reply
-uv sync
-```
-
-### 2. Set your API key
-
-Create a `.env` file in the project root:
-
-```env
-VIDEODB_API_KEY=sk-your_api_key_here
-```
-
-### 3. Configure your MCP client
-
-Add to your MCP config (`claude_desktop_config.json`, VS Code MCP settings, etc.):
-
-```json
-{
-  "mcpServers": {
-    "videodb-record-replay": {
-      "command": "uv",
-      "args": ["run", "python", "server.py"],
-      "cwd": "/path/to/open-record-reply"
-    }
-  }
-}
-```
-
-### 4. Restart your client
-
-Five tools and two resources will appear. You're ready to record.
-
-<details>
-<summary><strong>Platform-specific setup</strong></summary>
-
-**macOS** — Requires Screen Recording, Microphone, Accessibility, and Input Monitoring permissions. Run the hook smoke test first:
-
-```bash
-uv run python scripts/smoke_macos_hook.py --prompt-permissions
-```
-
-If `ready_for_event_recording` is false, enable the terminal process in **System Settings > Privacy & Security > Accessibility** and **Input Monitoring**, then rerun.
-
-**Windows** — Uses UI Automation. No additional setup required beyond the standard install.
-
-**Linux** — Uses AT-SPI. Ensure `at-spi2-core` is installed and your desktop environment has accessibility enabled.
-
-</details>
-
----
-
-## Usage
-
-Recording is human-in-the-loop. The agent starts recording, announces that recording is active, then waits. The human operator performs the UI workflow being captured.
-
-```
-record_skill_tool("my-workflow", lead_in_seconds=5)
-    → Agent tells the operator recording is active
-    → Operator switches to the target app and performs the workflow
-    → Operator returns to the MCP client and says "stop"
-    → Agent calls stop_recording_tool(trim_end_seconds=10)
-    → Agent calls compile_skill_tool(video_id, "my-workflow")
-    → Agent verifies/reports global_skill_md_path for future use
-```
-
-<details>
-<summary><strong>lead_in_seconds</strong></summary>
-
-The recorder starts capture immediately, then the compiler ignores events before the effective workflow start. With `lead_in_seconds=5`, the operator can switch from the MCP client to the target app and should begin the demonstrated workflow after 5 seconds.
-
-</details>
-
-<details>
-<summary><strong>trim_end_seconds</strong></summary>
-
-Discards events at the tail of the recording. Use when the operator must switch back to the MCP client to say "stop". For example, `trim_end_seconds=10` ignores the final 10 seconds so the generated skill does not include the operator returning to the terminal or chat window.
-
-</details>
-
-<details>
-<summary><strong>Events-only mode</strong></summary>
-
-If VideoDB screen capture is unavailable, the system falls back to recording AX events only. Call `compile_skill_tool` with `video_id=""` or `video_id="none"` to compile from events alone.
-
-</details>
-
----
-
 ## Skill Output
 
 Compiled skills land in `~/.mcp-videodb/skills/<name>/`:
@@ -236,7 +236,7 @@ install step has happened so the skill is available in future runs. Set
 ## Architecture
 
 ```
-open-record-reply/
+open-record-replay/
 ├── server.py                 # FastMCP entry point, tool and resource definitions
 ├── state.py                  # Shared server state singleton
 ├── config.py                 # Constants, .env loading
@@ -340,7 +340,7 @@ If `ready_for_event_recording` is false, manually enable the terminal in **Syste
 ## Community & Support
 
 - **Docs**: [docs.videodb.io](https://docs.videodb.io)
-- **Issues**: [GitHub Issues](https://github.com/video-db/open-record-reply/issues)
+- **Issues**: [GitHub Issues](https://github.com/video-db/open-record-replay/issues)
 - **Discord**: [Join the VideoDB community](https://discord.gg/py9P639jGz)
 - **API Key**: [console.videodb.io](https://console.videodb.io)
 
@@ -357,9 +357,9 @@ If `ready_for_event_recording` is false, manually enable the terminal in **Syste
 [uv-url]: https://docs.astral.sh/uv/
 [license-shield]: https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge
 [license-url]: https://opensource.org/licenses/MIT
-[stars-shield]: https://img.shields.io/github/stars/video-db/open-record-reply.svg?style=for-the-badge
-[stars-url]: https://github.com/video-db/open-record-reply/stargazers
-[issues-shield]: https://img.shields.io/github/issues/video-db/open-record-reply.svg?style=for-the-badge
-[issues-url]: https://github.com/video-db/open-record-reply/issues
+[stars-shield]: https://img.shields.io/github/stars/video-db/open-record-replay.svg?style=for-the-badge
+[stars-url]: https://github.com/video-db/open-record-replay/stargazers
+[issues-shield]: https://img.shields.io/github/issues/video-db/open-record-replay.svg?style=for-the-badge
+[issues-url]: https://github.com/video-db/open-record-replay/issues
 [website-shield]: https://img.shields.io/website?url=https%3A%2F%2Fvideodb.io%2F&style=for-the-badge&label=videodb.io
 [website-url]: https://videodb.io/
