@@ -67,7 +67,7 @@ uv sync
 Create a `.env` file in the project root:
 
 ```env
-VIDEODB_API_KEY=sk-your_api_key_here
+VIDEODB_API_KEY=your_VIDEODB_API_KEY
 ```
 
 ### 3. Configure your MCP client
