@@ -46,6 +46,12 @@ Demonstrate a task once on screen, and the server produces a self-contained, ver
 
 ---
 
+## Demo
+
+https://github.com/user-attachments/assets/5ec93a7a-f285-4265-99a7-4ea60349b0ee
+
+---
+
 ## Installation
 
 ### Prerequisites
